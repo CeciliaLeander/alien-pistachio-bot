@@ -30,9 +30,9 @@ async def on_ready():
 @bot.event
 async def on_member_join(member):
     welcome_text = (
-        f"🎉 欢迎 {member.name} 加入我们的社区！\n\n"
+        f"🎉 欢迎 {member.name} 加入我们的社区！\n"
         "**新人宝宝需要注意的**\n"
-        f"1. 社区板块介绍与玩卡规则请查看：{RULES_LINK}\n\n"
+        f"1. 社区板块介绍与玩卡规则请查看：{RULES_LINK}\n"
         "2. 阅读玩上述内容确认可以接受后，若您不是lc或wbz成员，则可于新人提问区@【发卡组】或名称为「新人bot相关」的老师礼貌申请卡区身份组：可颂🥐\n"
         "3. 请善用频道标注功能，若有标注则代表着重要消息。\n"
         f"4. 有问题请在对应频道提问：{NEWBIE_QA_LINK}\n\n"
@@ -51,27 +51,30 @@ async def on_member_join(member):
             await channel.send(welcome_text, embed=embed)
 
 # ============ 基础指令 ============
-#@bot.command(name="帮助")
-#async def help_command(ctx):
-#    """显示所有可用指令"""
-#    help_text = (
-#        "📖 **可用指令：**\n"
-#        "`!帮助` - 显示此帮助信息\n"
-#        "`!规则` - 查看社区规范\n"
-#        "`!签到` - 每日签到\n"
-#    )
-#    await ctx.send(help_text)
-#
-#@bot.command(name="规则")
-#async def rules_command(ctx):
-#    """查看社区规范"""
-#    await ctx.send(
-#        "📋 **社区规范：**\n"
-#        "1. 友善交流，尊重每一位成员\n"
-#        "2. 禁止发布广告和垃圾信息\n"
-#        "3. 禁止传播不良内容\n"
-#        "4. 有问题请在对应频道提问"
-#    )
+@bot.command(name="帮助")
+async def help_command(ctx):
+    """显示所有可用指令"""
+    help_text = (
+        "📖 **可用指令：**\n"
+        "`!帮助` - 显示此帮助信息\n"
+        "`!规则` - 查看社区规范\n"
+    )
+    await ctx.send(help_text)
+
+@bot.command(name="规则")
+async def rules_command(ctx):
+    """查看社区规范"""
+    rules_text = (
+        "**新人宝宝需要注意的**\n"
+        f"1. 社区板块介绍与玩卡规则请查看：{RULES_LINK}\n\n"
+        "2. 阅读玩上述内容确认可以接受后，若您不是lc或wbz成员，"
+        "则可于新人提问区@【发卡组】或名称为「新人bot相关」的老师礼貌申请卡区身份组：可颂🥐\n"
+        "3. 请善用频道标注功能，若有标注则代表着重要消息。\n"
+        f"4. 有问题请在对应频道提问：{NEWBIE_QA_LINK}\n\n"
+    )
+    embed = discord.Embed()
+    embed.set_image(url=PINNED_MESSAGE_GUIDE_URL)
+    await ctx.send(rules_text, embed=embed)
 #
 #@bot.command(name="签到")
 #async def checkin_command(ctx):
