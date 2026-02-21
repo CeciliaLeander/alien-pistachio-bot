@@ -1,0 +1,100 @@
+import os
+import discord
+from discord.ext import commands
+
+# ============ 基础配置 ============
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+WELCOME_CHANNEL_ID = 1446888253884989515  # 欢迎频道ID
+NEWBIE_QA_LINK = "https://discord.com/channels/1446888252194816132/1447518124696928357"  # 新人提问频道链接
+
+# 标注图片链接
+PINNED_MESSAGE_GUIDE_URL = "https://raw.githubusercontent.com/CeciliaLeander/alien-pistachio-bot/main/pinned-message-guide.png"
+
+# 规则消息跳转链接
+RULES_LINK = "https://discord.com/channels/1446888252194816132/1447518124696928357/1474661532779544636"
+
+# ============ Bot 初始化 ============
+intents = discord.Intents.default()
+intents.members = True
+intents.message_content = True
+
+bot = commands.Bot(command_prefix="!", intents=intents)
+
+# ============ Bot 启动事件 ============
+@bot.event
+async def on_ready():
+    print(f"Bot 已上线：{bot.user}")
+    print(f"已连接服务器：{[g.name for g in bot.guilds]}")
+
+# ============ 新成员欢迎（私信） ============
+@bot.event
+async def on_member_join(member):
+    welcome_text = (
+        f"🎉 欢迎 {member.name} 加入我们的社区！\n\n"
+        "**新人宝宝需要注意的**\n"
+        f"1. 社区板块介绍与玩卡规则请查看：{RULES_LINK}\n\n"
+        "2. 阅读玩上述内容确认可以接受后，若您不是lc或wbz成员，则可于新人提问区@【发卡组】或名称为「新人bot相关」的老师礼貌申请卡区身份组：可颂🥐\n"
+        "3. 请善用频道标注功能，若有标注则代表着重要消息。\n"
+        f"4. 有问题请在对应频道提问：{NEWBIE_QA_LINK}\n\n"
+        "祝你在这里玩得开心！"
+    )
+
+    # 创建嵌入卡片（用来显示图片）
+    embed = discord.Embed()
+    embed.set_image(url=PINNED_MESSAGE_GUIDE_URL)
+
+    try:
+        await member.send(welcome_text, embed=embed)
+    except discord.Forbidden:
+        channel = bot.get_channel(WELCOME_CHANNEL_ID) or member.guild.system_channel
+        if channel:
+            await channel.send(welcome_text, embed=embed)
+
+# ============ 基础指令 ============
+#@bot.command(name="帮助")
+#async def help_command(ctx):
+#    """显示所有可用指令"""
+#    help_text = (
+#        "📖 **可用指令：**\n"
+#        "`!帮助` - 显示此帮助信息\n"
+#        "`!规则` - 查看社区规范\n"
+#        "`!签到` - 每日签到\n"
+#    )
+#    await ctx.send(help_text)
+#
+#@bot.command(name="规则")
+#async def rules_command(ctx):
+#    """查看社区规范"""
+#    await ctx.send(
+#        "📋 **社区规范：**\n"
+#        "1. 友善交流，尊重每一位成员\n"
+#        "2. 禁止发布广告和垃圾信息\n"
+#        "3. 禁止传播不良内容\n"
+#        "4. 有问题请在对应频道提问"
+#    )
+#
+#@bot.command(name="签到")
+#async def checkin_command(ctx):
+#    """每日签到"""
+#    await ctx.send(f"✅ {ctx.author.name} 签到成功！")
+#
+# ============ 在下方添加新功能 ============
+# 示例：添加新指令
+# @bot.command(name="新指令")
+# async def new_command(ctx):
+#     await ctx.send("这是新功能！")
+#
+# 示例：添加新事件监听
+# @bot.event
+# async def on_message_delete(message):
+#     print(f"消息被删除：{message.content}")
+#
+# 示例：添加定时任务
+# from discord.ext import tasks
+# @tasks.loop(hours=24)
+# async def daily_task():
+#     channel = bot.get_channel(频道ID)
+#     await channel.send("每日提醒！")
+
+# ============ 启动 Bot ============
+bot.run(BOT_TOKEN)
