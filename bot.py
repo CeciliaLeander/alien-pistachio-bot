@@ -1141,13 +1141,105 @@ async def anon_speak(
         conn.commit()
         conn.close()
         
-        await interaction.followup.send(
-            f"👂 嘿嘿～匿名消息发出去啦！你现在的代号是 **{nickname}**\n"
-            f"💡 在下次洗牌之前，你在这个频道都会是这个身份哦～",
-            ephemeral=True
-        )
+        # 成功时静默回复，不打扰聊天
+        await interaction.followup.send("✅", ephemeral=True)
     except Exception as e:
         await interaction.followup.send(f"👂 发送失败了：{str(e)}", ephemeral=True)
+
+# ---- 自动匿名转发：匿名频道中直接打字自动变匿名 ----
+@bot.event
+async def on_message(message):
+    # 忽略 Bot 自己的消息和 Webhook 消息
+    if message.author.bot:
+        await bot.process_commands(message)
+        return
+    
+    # 判断是否在匿名频道中
+    channel = message.channel
+    guild = message.guild
+    if not guild:
+        await bot.process_commands(message)
+        return
+    
+    # 检查当前频道或其父频道是否为匿名频道
+    target_channel_id = channel.parent_id if isinstance(channel, discord.Thread) else channel.id
+    
+    if not is_anon_channel(guild.id, target_channel_id) and not is_anon_channel(guild.id, channel.id):
+        await bot.process_commands(message)
+        return
+    
+    # 如果是 ! 开头的指令，不做匿名转发，正常处理指令
+    if message.content and message.content.startswith("!"):
+        await bot.process_commands(message)
+        return
+    
+    # 是匿名频道 → 自动转发
+    try:
+        # 获取/分配匿名昵称
+        nickname = get_or_assign_nickname(message.author.id, channel.id)
+        avatar_url = get_nickname_avatar_url(nickname)
+        
+        # 处理附件
+        files = []
+        for attachment in message.attachments:
+            file_bytes = await attachment.read()
+            files.append(discord.File(io.BytesIO(file_bytes), filename=attachment.filename))
+        
+        # 删除原消息
+        try:
+            await message.delete()
+        except Exception:
+            pass
+        
+        # 获取或创建 Webhook
+        webhook_channel = channel.parent if isinstance(channel, discord.Thread) else channel
+        webhooks = await webhook_channel.webhooks()
+        webhook = discord.utils.get(webhooks, name="小鹅子匿名")
+        if not webhook:
+            webhook = await webhook_channel.create_webhook(name="小鹅子匿名")
+        
+        # 发送参数
+        send_kwargs = {
+            "username": nickname,
+            "avatar_url": avatar_url,
+            "wait": True,
+        }
+        
+        if message.content:
+            send_kwargs["content"] = message.content
+        
+        if files:
+            send_kwargs["files"] = files
+        
+        if isinstance(channel, discord.Thread):
+            send_kwargs["thread"] = channel
+        
+        # 没有内容也没有附件就不发
+        if not message.content and not files:
+            await bot.process_commands(message)
+            return
+        
+        webhook_message = await webhook.send(**send_kwargs)
+        
+        # 记录到数据库
+        conn = sqlite3.connect(DB_PATH)
+        c = conn.cursor()
+        c.execute(
+            "INSERT INTO anon_messages (bot_message_id, channel_id, user_id, nickname, content, sent_at) VALUES (?, ?, ?, ?, ?, ?)",
+            (webhook_message.id, channel.id, message.author.id, nickname, message.content or "", datetime.now().isoformat())
+        )
+        conn.commit()
+        conn.close()
+        
+    except Exception as e:
+        # 转发失败时尝试提示用户
+        try:
+            hint = await channel.send(f"👂 匿名转发失败了…可以试试用 `/匿名发言` 指令哦", delete_after=5)
+        except Exception:
+            pass
+    
+    # 确保其他指令（如 !帮助）仍然能正常工作
+    await bot.process_commands(message)
 
 # ---- 管理员：查看匿名身份 ----
 @bot.tree.command(name="查看匿名身份", description="【管理员】通过消息链接查看匿名者的真实身份")
