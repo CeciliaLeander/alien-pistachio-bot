@@ -28,7 +28,7 @@ FILES_DIR = os.path.join(DATA_DIR, "files")
 DB_PATH = os.path.join(DATA_DIR, "bot.db")
 
 # 管理员身份组名称（拥有此身份组的人才能上传/验证）
-ADMIN_ROLE_NAME = "Server Booster"
+ADMIN_ROLE_NAME = "开心果奴隶"
 
 # ============ 确保目录存在 ============
 os.makedirs(FILES_DIR, exist_ok=True)
