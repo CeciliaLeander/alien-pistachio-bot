@@ -200,15 +200,29 @@ ZERO_WIDTH_CHARS = {
 REVERSE_ZERO_WIDTH = {v: k for k, v in ZERO_WIDTH_CHARS.items()}
 
 def embed_json_watermark(json_bytes, tracking_code):
-    """在 JSON 文件末尾用零宽字符嵌入追踪码"""
+    """在 JSON 文件中嵌入追踪码，不影响JSON解析"""
     content = json_bytes.decode('utf-8')
+    data = json.loads(content)
+
+    # 将追踪码转换为零宽字符
     watermark = ''.join(ZERO_WIDTH_CHARS.get(c, '') for c in tracking_code)
-    
-    # 放在文件末尾而不是JSON内部，避免解析失败
-    content = content.rstrip()
-    content = content + '\n' + watermark
-    
-    return content.encode('utf-8')
+
+    # 在不影响功能的字段值末尾追加零宽字符
+    if 'data' in data and isinstance(data['data'], dict):
+        if 'creator_notes' in data['data']:
+            data['data']['creator_notes'] += watermark
+        elif 'description' in data['data']:
+            data['data']['description'] += watermark
+        else:
+            data['data']['_'] = watermark
+    elif 'creator_notes' in data:
+        data['creator_notes'] += watermark
+    elif 'description' in data:
+        data['description'] += watermark
+    else:
+        data['_'] = watermark
+
+    return json.dumps(data, ensure_ascii=False, indent=2).encode('utf-8')
 
 def extract_json_watermark(json_bytes):
     """从 JSON 文件中提取零宽字符追踪码"""
