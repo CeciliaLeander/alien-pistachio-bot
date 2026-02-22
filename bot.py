@@ -247,9 +247,12 @@ async def help_command(ctx):
         "`!帮助` - 显示此帮助信息\n"
         "`!规则` - 查看社区规范\n"
         "`/回顶` - 跳转到当前频道最早的一条消息\n"
+        "`/获取附件` - 获取帖子附件（需先点赞或评论）\n\n"
         "🔧 **管理员指令：**\n"
         "`/上传附件` - 上传文件到指定帖子\n"
         "`/更新附件` - 为已有文件上传新版本\n"
+        "`/验证水印` - 上传文件提取追踪码，查出泄露者\n"
+        "`/查看记录` - 查看某帖子的所有文件获取记录\n"
     )
     await ctx.send(help_text)
 
@@ -305,7 +308,7 @@ async def upload_file(interaction: discord.Interaction, 帖子链接: str, 文�
         await interaction.followup.send("❌ 链接无效，请右键帖子→复制链接后粘贴。", ephemeral=True)
         return
 
-     # 确定文件类型
+    # 确定文件类型
     if 文件.filename.lower().endswith(('.png', '.jpg', '.jpeg')):
         file_type = "image"
     elif 文件.filename.lower().endswith('.json'):
@@ -406,18 +409,251 @@ async def update_file(interaction: discord.Interaction, 帖子链接: str, 文�
     finally:
         conn.close()
 
+# ============ 用户：获取附件 ============
+@bot.tree.command(name="获取附件", description="获取当前帖子的附件文件（需先点赞首楼或评论）")
+async def get_file(interaction: discord.Interaction):
+    await interaction.response.defer(ephemeral=True)
 
-# 示例：添加新事件监听
-# @bot.event
-# async def on_message_delete(message):
-#     print(f"消息被删除：{message.content}")
-#
-# 示例：添加定时任务
-# from discord.ext import tasks
-# @tasks.loop(hours=24)
-# async def daily_task():
-#     channel = bot.get_channel(频道ID)
-#     await channel.send("每日提醒！")
+    channel = interaction.channel
+
+    # 检查是否在帖子（Thread）中
+    if not isinstance(channel, discord.Thread):
+        await interaction.followup.send("❌ 请在帖子中使用此指令。", ephemeral=True)
+        return
+
+    post_name = channel.name
+    user = interaction.user
+
+    # ---- 验证用户是否点赞首楼或发过评论 ----
+    has_reacted = False
+    has_commented = False
+
+    # 检查首楼点赞
+    try:
+        starter_message = channel.starter_message
+        if starter_message is None:
+            starter_message = await channel.fetch_message(channel.id)
+
+        if starter_message:
+            for reaction in starter_message.reactions:
+                async for reaction_user in reaction.users():
+                    if reaction_user.id == user.id:
+                        has_reacted = True
+                        break
+                if has_reacted:
+                    break
+    except Exception:
+        pass
+
+    # 检查是否发过评论
+    if not has_reacted:
+        async for message in channel.history(limit=200):
+            if message.author.id == user.id and message.id != channel.id:
+                has_commented = True
+                break
+
+    if not has_reacted and not has_commented:
+        await interaction.followup.send(
+            "❌ 你需要先**点赞帖子首楼**或**发一条评论**才能获取附件哦～",
+            ephemeral=True
+        )
+        return
+
+    # ---- 查询该帖子下的可用文件 ----
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("SELECT DISTINCT file_name FROM files WHERE post_name = ?", (post_name,))
+    file_names = [row[0] for row in c.fetchall()]
+    conn.close()
+
+    if not file_names:
+        await interaction.followup.send("❌ 当前帖子没有可用的附件。", ephemeral=True)
+        return
+
+    # 创建文件选择菜单
+    class FileSelectView(discord.ui.View):
+        def __init__(self):
+            super().__init__(timeout=60)
+            options = [discord.SelectOption(label=name, value=name) for name in file_names]
+            self.select = discord.ui.Select(placeholder="选择文件...", options=options)
+            self.select.callback = self.file_selected
+            self.add_item(self.select)
+
+        async def file_selected(self, select_interaction: discord.Interaction):
+            selected_file = self.select.values[0]
+
+            # 查询该文件的所有版本
+            conn = sqlite3.connect(DB_PATH)
+            c = conn.cursor()
+            c.execute(
+                "SELECT version FROM files WHERE post_name = ? AND file_name = ? ORDER BY uploaded_at DESC",
+                (post_name, selected_file)
+            )
+            versions = [row[0] for row in c.fetchall()]
+            conn.close()
+
+            # 创建版本选择菜单
+            class VersionSelectView(discord.ui.View):
+                def __init__(self):
+                    super().__init__(timeout=60)
+                    options = [discord.SelectOption(label=v, value=v) for v in versions]
+                    self.select = discord.ui.Select(placeholder="选择版本...", options=options)
+                    self.select.callback = self.version_selected
+                    self.add_item(self.select)
+
+                async def version_selected(self, version_interaction: discord.Interaction):
+                    selected_version = self.select.values[0]
+                    await version_interaction.response.defer(ephemeral=True)
+
+                    # 获取文件信息
+                    conn = sqlite3.connect(DB_PATH)
+                    c = conn.cursor()
+                    c.execute(
+                        "SELECT id, file_path, file_type FROM files WHERE post_name = ? AND file_name = ? AND version = ?",
+                        (post_name, selected_file, selected_version)
+                    )
+                    result = c.fetchone()
+                    conn.close()
+
+                    if not result:
+                        await version_interaction.followup.send("❌ 文件未找到。", ephemeral=True)
+                        return
+
+                    file_id, file_path, file_type = result
+
+                    # 读取原始文件
+                    with open(file_path, 'rb') as f:
+                        file_bytes = f.read()
+
+                    # 生成追踪码
+                    tracking_code = generate_tracking_code()
+
+                    # 嵌入水印
+                    try:
+                        if file_type == "image":
+                            watermarked_bytes = embed_image_watermark(file_bytes, tracking_code)
+                            ext = ".png"
+                        elif file_type == "json":
+                            watermarked_bytes = embed_json_watermark(file_bytes, tracking_code)
+                            ext = ".json"
+                        else:
+                            watermarked_bytes = file_bytes
+                            ext = os.path.splitext(file_path)[1]
+                    except Exception as e:
+                        await version_interaction.followup.send(f"❌ 水印嵌入失败：{str(e)}", ephemeral=True)
+                        return
+
+                    # 记录追踪信息
+                    conn = sqlite3.connect(DB_PATH)
+                    c = conn.cursor()
+                    c.execute(
+                        "INSERT INTO tracking (tracking_code, user_id, user_name, file_id, post_name, file_name, version, retrieved_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                        (tracking_code, user.id, user.name, file_id, post_name, selected_file, selected_version, datetime.now().isoformat())
+                    )
+                    conn.commit()
+                    conn.close()
+
+                    # 发送水印文件
+                    file_obj = discord.File(
+                        io.BytesIO(watermarked_bytes),
+                        filename=f"{selected_file}_{selected_version}{ext}"
+                    )
+                    await version_interaction.followup.send(
+                        f"✅ 这是你的文件：**{selected_file}** ({selected_version})\n请妥善保管，勿外传哦～",
+                        file=file_obj,
+                        ephemeral=True
+                    )
+
+            await select_interaction.response.send_message(
+                f"📄 **{selected_file}** 有以下版本可选：",
+                view=VersionSelectView(),
+                ephemeral=True
+            )
+
+    await interaction.followup.send(
+        "📁 当前帖子有以下文件可获取：",
+        view=FileSelectView(),
+        ephemeral=True
+    )
+
+# ============ 管理员：验证水印 ============
+@bot.tree.command(name="验证水印", description="【管理员】上传文件提取追踪码，查出泄露者")
+@app_commands.describe(文件="要验证的文件")
+async def verify_watermark(interaction: discord.Interaction, 文件: discord.Attachment):
+    if not is_admin(interaction):
+        await interaction.response.send_message("❌ 只有管理员才能使用此指令。", ephemeral=True)
+        return
+
+    await interaction.response.defer(ephemeral=True)
+
+    file_bytes = await 文件.read()
+
+    # 根据文件类型提取水印
+    tracking_code = None
+    if 文件.filename.lower().endswith(('.png', '.jpg', '.jpeg')):
+        tracking_code = extract_image_watermark(file_bytes)
+    elif 文件.filename.lower().endswith('.json'):
+        tracking_code = extract_json_watermark(file_bytes)
+
+    if not tracking_code:
+        await interaction.followup.send("❌ 未检测到水印，该文件可能未经过Bot分发或水印已被破坏。", ephemeral=True)
+        return
+
+    # 查询追踪记录
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute(
+        "SELECT user_id, user_name, post_name, file_name, version, retrieved_at FROM tracking WHERE tracking_code = ?",
+        (tracking_code,)
+    )
+    result = c.fetchone()
+    conn.close()
+
+    if result:
+        user_id, user_name, post_name, file_name, version, retrieved_at = result
+        await interaction.followup.send(
+            f"🔍 **水印验证结果：**\n\n"
+            f"🔑 追踪码：`{tracking_code}`\n"
+            f"👤 用户：{user_name}（ID: {user_id}）\n"
+            f"📁 帖子：{post_name}\n"
+            f"📄 文件：{file_name} ({version})\n"
+            f"🕐 获取时间：{retrieved_at}",
+            ephemeral=True
+        )
+    else:
+        await interaction.followup.send(
+            f"🔑 追踪码：`{tracking_code}`\n❌ 数据库中未找到对应记录。",
+            ephemeral=True
+        )
+
+# ============ 管理员：查看追踪记录 ============
+@bot.tree.command(name="查看记录", description="【管理员】查看某个帖子的所有文件获取记录")
+@app_commands.describe(帖子名称="要查看的帖子名称")
+async def view_tracking(interaction: discord.Interaction, 帖子名称: str):
+    if not is_admin(interaction):
+        await interaction.response.send_message("❌ 只有管理员才能使用此指令。", ephemeral=True)
+        return
+
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute(
+        "SELECT tracking_code, user_name, file_name, version, retrieved_at FROM tracking WHERE post_name = ? ORDER BY retrieved_at DESC LIMIT 20",
+        (帖子名称,)
+    )
+    records = c.fetchall()
+    conn.close()
+
+    if not records:
+        await interaction.response.send_message(f"📭 帖子「{帖子名称}」暂无获取记录。", ephemeral=True)
+        return
+
+    text = f"📋 **帖子「{帖子名称}」的获取记录（最近20条）：**\n\n"
+    for code, user_name, file_name, version, retrieved_at in records:
+        text += f"`{code}` | {user_name} | {file_name} ({version}) | {retrieved_at}\n"
+
+    await interaction.response.send_message(text, ephemeral=True)
+
+# ============ 在下方添加新功能 ============
 
 # ============ 启动 Bot ============
 bot.run(BOT_TOKEN)
