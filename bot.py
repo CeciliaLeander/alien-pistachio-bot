@@ -2,11 +2,12 @@ import os
 import io
 import json
 import uuid
+import random
 import sqlite3
 from datetime import datetime
 from PIL import Image
 import discord
-from discord.ext import commands
+from discord.ext import commands, tasks
 from discord import app_commands
 
 # ============ 基础配置 ============
@@ -29,6 +30,30 @@ DB_PATH = os.path.join(DATA_DIR, "bot.db")
 
 # 管理员身份组名称（拥有此身份组的人才能上传/验证）
 ADMIN_ROLE_NAME = "开心果奴隶"
+
+# ============ 匿名区配置 ============
+# 冰雪甜品元素昵称池
+ANON_NICKNAMES = [
+    "🍦 冰淇淋泡芙", "🧁 雪域杯子蛋糕", "🍰 冰山芝士蛋糕", "❄️ 雪花马卡龙",
+    "🍨 冰雪圣代", "🧊 冰晶棉花糖", "🍧 雪融刨冰", "🎂 霜糖蛋糕卷",
+    "🍩 雪顶甜甜圈", "🍪 冰霜曲奇", "🧇 雪花华夫饼", "🍮 冰镇布丁",
+    "🍡 雪见团子", "🥧 冰雪派", "🍬 霜糖奶糖", "🫧 冰泡芙",
+    "🌨️ 雪绒提拉米苏", "☃️ 雪人慕斯", "🏔️ 冰峰千层", "💎 水晶果冻",
+    "🌙 月光雪糕", "⛄ 雪球麻薯", "🎀 冰丝可丽饼", "🦢 天鹅泡芙",
+    "🐧 企鹅冰棒", "🐻‍❄️ 北极熊奶昔", "🦊 雪狐蛋挞", "🐰 雪兔大福",
+    "🌸 樱雪铜锣烧", "🍓 冰莓舒芙蕾", "🫐 蓝莓雪冰", "🍑 蜜桃冰沙",
+    "🥝 雪梨奶冻", "🍋 柠檬冰霜", "🍇 葡萄雪泥", "🥥 椰雪冰糕",
+    "🌈 彩虹冰棍", "✨ 星光雪饼", "🔮 水晶汤圆", "🪄 魔法雪糕",
+    "🎪 梦幻冰塔", "🎠 旋转冰淇淋", "🎡 摩天轮雪顶", "🏰 冰雪城堡蛋糕",
+    "🌊 海盐冰淇淋", "🧸 棉花糖小熊", "🎵 奏鸣曲雪糕", "🦋 蝴蝶酥冰淇淋",
+    "🌻 向日葵冰饼", "🍂 枫糖雪球", "💫 流星冰沙", "🪷 雪莲慕斯",
+    "🎐 风铃冰棒", "🏮 灯笼冰粉", "🎋 竹叶雪糕", "🌿 薄荷冰淇淋",
+    "🍵 抹茶冰雪", "☕ 拿铁冰霜", "🥛 奶雪冰砖", "🧋 珍珠冰沙",
+    "🫖 雪融奶茶", "🍶 清酒冰糕", "🥂 气泡冰酒", "🍹 冰雪鸡尾酒",
+]
+
+# 匿名昵称自动刷新间隔（小时）
+ANON_REFRESH_HOURS = 24
 
 # ============ 确保目录存在 ============
 os.makedirs(FILES_DIR, exist_ok=True)
@@ -59,6 +84,33 @@ def init_db():
         version TEXT NOT NULL,
         retrieved_at TEXT NOT NULL,
         FOREIGN KEY (file_id) REFERENCES files(id)
+    )''')
+    # 匿名频道配置表
+    c.execute('''CREATE TABLE IF NOT EXISTS anon_channels (
+        guild_id INTEGER NOT NULL,
+        channel_id INTEGER NOT NULL,
+        set_by INTEGER NOT NULL,
+        set_at TEXT NOT NULL,
+        PRIMARY KEY (guild_id, channel_id)
+    )''')
+    # 匿名身份映射表（同一用户在同一频道保持同一昵称）
+    c.execute('''CREATE TABLE IF NOT EXISTS anon_identities (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        channel_id INTEGER NOT NULL,
+        nickname TEXT NOT NULL,
+        assigned_at TEXT NOT NULL,
+        UNIQUE(user_id, channel_id)
+    )''')
+    # 匿名消息记录表
+    c.execute('''CREATE TABLE IF NOT EXISTS anon_messages (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        bot_message_id INTEGER NOT NULL,
+        channel_id INTEGER NOT NULL,
+        user_id INTEGER NOT NULL,
+        nickname TEXT NOT NULL,
+        content TEXT,
+        sent_at TEXT NOT NULL
     )''')
     conn.commit()
     conn.close()
@@ -217,20 +269,24 @@ def extract_json_watermark(json_bytes):
 @bot.event
 async def on_ready():
     await bot.tree.sync()
-    print(f"Bot 已上线：{bot.user}")
-    print(f"已连接服务器：{[g.name for g in bot.guilds]}")
+    # 启动匿名昵称定时刷新
+    if not refresh_anon_nicknames.is_running():
+        refresh_anon_nicknames.start()
+    print(f"👂 小鹅子上线了：{bot.user}")
+    print(f"👂 已连接雪山：{[g.name for g in bot.guilds]}")
 
 # ============ 新成员欢迎（私信） ============
 @bot.event
 async def on_member_join(member):
     welcome_text = (
-        f"🎉 欢迎 {member.name} 加入我们的社区！\n"
-        "**新人宝宝需要注意的**\n"
-        f"1. 社区板块介绍与玩卡规则请查看：{RULES_LINK}\n"
-        "2. 阅读完上述内容确认可以接受后，若您不是lc或wbz成员，则可于新人提问区@【发卡组】或名称含有「新人bot」相关的老师礼貌申请卡区身份组：可颂🥐\n"
-        "3. 请善用频道标注功能，若有标注则代表着重要消息。\n"
-        f"4. 有问题请在对应频道提问：{NEWBIE_QA_LINK}\n\n"
-        "祝你在这里玩得开心！"
+        f"👂 哇！{member.name} 来啦来啦！\n"
+        "小鹅子在这里！鹅是一只外星企鹅留在开心果雪山的进食器官～虽然没有眼睛也没有大脑，但是会努力当好管家的！\n\n"
+        "**新朋友看这里呀：**\n"
+        f"1. 雪山的规矩和板块介绍在这里哦：{RULES_LINK}\n"
+        "2. 看完能接受的话，若您不是lc或wbz成员，可以去新人提问区@【发卡组】或名称含有「新人bot」相关的老师礼貌申请卡区身份组：可颂🥐\n"
+        "3. 记得善用频道标注功能哦，有标注的都是重要消息！\n"
+        f"4. 有问题来这里问就好啦：{NEWBIE_QA_LINK}\n\n"
+        "希望你在雪山玩得开心呀！鹅会乖乖看好仓库的～🐾"
     )
 
     # 创建嵌入卡片（用来显示图片）
@@ -249,17 +305,27 @@ async def on_member_join(member):
 async def help_command(ctx):
     """显示所有可用指令"""
     help_text = (
-        "📖 **可用指令：**\n"
-        "`!帮助` - 显示此帮助信息\n"
-        "`!规则` - 查看社区规范\n"
-        "`/回顶` - 跳转到当前频道最早的一条消息\n"
-        "`/获取附件` - 获取帖子附件（需先点赞或评论）\n\n"
-        "🔧 **管理员指令：**\n"
-        "`/上传附件` - 上传文件到指定帖子\n"
-        "`/更新附件` - 为已有文件上传新版本\n"
-        "`/验证水印` - 上传文件提取追踪码，查出泄露者\n"
-        "`/查看记录` - 查看某帖子的所有文件获取记录\n"
-        "`/删除附件` - 删除指定帖子下的某个文件版本\n"
+        "👂 **小鹅子使用说明书**～鹅虽然没有大脑，但是功能很多的哦！\n\n"
+        "📖 **大家都能用的：**\n"
+        "`!帮助` - 就是你现在看到的这个啦～\n"
+        "`!规则` - 雪山生存守则\n"
+        "`/回顶` - 嗖地帮你飞到频道最顶上\n"
+        "`/获取附件` - 从鹅的仓库里拿文件（要先点赞或评论哦）\n\n"
+        "🎭 **匿名区：**\n"
+        "`/匿名发言` - 在匿名频道里偷偷说话～\n\n"
+        "🔔 **角色订阅：**\n"
+        "通过订阅面板自助选择喜欢的角色身份组，有新卡发布时就会收到通知哦～\n\n"
+        "🔧 **管理员专属：**\n"
+        "`/上传附件` - 往仓库里放文件\n"
+        "`/更新附件` - 给文件换个新版本\n"
+        "`/验证水印` - 用水印追踪泄露者\n"
+        "`/查看记录` - 看看谁拿了什么文件\n"
+        "`/删除附件` - 从仓库删掉文件\n"
+        "`/设置匿名频道` - 开一个匿名区\n"
+        "`/取消匿名频道` - 关掉匿名区\n"
+        "`/查看匿名身份` - 看看匿名的人是谁\n"
+        "`/刷新匿名昵称` - 重新洗牌所有匿名昵称\n"
+        "`/发送订阅面板` - 发送角色身份组选择面板\n"
     )
     await ctx.send(help_text)
 
@@ -267,12 +333,12 @@ async def help_command(ctx):
 async def rules_command(ctx):
     """查看社区规范"""
     rules_text = (
-        "**新人宝宝需要注意的**\n"
-        f"1. 社区板块介绍与玩卡规则请查看：{RULES_LINK}\n"
-        "2. 阅读完上述内容确认可以接受后，若您不是lc或wbz成员，"
-        "则可于新人提问区@【发卡组】或名称为「新人bot相关」的老师礼貌申请卡区身份组：可颂🥐\n"
-        "3. 请善用频道标注功能，若有标注则代表着重要消息。\n"
-        f"4. 有问题请在对应频道提问：{NEWBIE_QA_LINK}\n\n"
+        "👂 **雪山生存守则**～鹅来念给你听！\n\n"
+        f"1. 规矩和板块介绍都在这里哦：{RULES_LINK}\n"
+        "2. 看完觉得OK的话，若您不是lc或wbz成员，"
+        "可以去新人提问区@【发卡组】或名称为「新人bot相关」的老师礼貌申请卡区身份组：可颂🥐\n"
+        "3. 善用频道标注功能呀！有标注的都是重要消息哦～\n"
+        f"4. 有问题来这里问就好啦：{NEWBIE_QA_LINK}\n\n"
     )
     embed = discord.Embed()
     embed.set_image(url=PINNED_MESSAGE_GUIDE_URL)
@@ -286,21 +352,21 @@ async def scroll_to_top(interaction: discord.Interaction):
     if oldest_messages:
         msg = oldest_messages[0]
         link = f"https://discord.com/channels/{interaction.guild_id}/{interaction.channel_id}/{msg.id}"
-        await interaction.response.send_message(f"👽 开心果大王乘着UFO来了！👽：{link}", ephemeral=True)
+        await interaction.response.send_message(f"👂 嗖～鹅帮你飞到最上面啦：{link}", ephemeral=True)
     else:
-        await interaction.response.send_message("这个频道还没有消息哦～", ephemeral=True)
+        await interaction.response.send_message("👂 这个频道还没有消息呢～空空的...", ephemeral=True)
 
 # ============ 管理员：bot代发公告 ============
 @bot.command(name="公告")
 async def post_announcement(ctx):
     if not any(role.name == ADMIN_ROLE_NAME for role in ctx.author.roles):
-        await ctx.send("❌ 只有管理员才能使用此指令。")
+        await ctx.send("👂 这个只有管理员才能用哦～鹅也没办法呀")
         return
 
     # 获取 !公告 后面的所有文字
     content = ctx.message.content[len("!公告"):].strip()
     if not content:
-        await ctx.send("❌ 请在 `!公告` 后面输入要发布的内容。")
+        await ctx.send("👂 要在 `!公告` 后面写上内容哦～鹅猜不到你想说什么呀")
         return
 
     await ctx.message.delete()  # 删除管理员发的指令消息
@@ -316,7 +382,7 @@ async def post_announcement(ctx):
 )
 async def upload_file(interaction: discord.Interaction, 帖子链接: str, 文件名: str, 版本: str, 文件: discord.Attachment):
     if not is_admin(interaction):
-        await interaction.response.send_message("❌ 只有管理员才能使用此指令。", ephemeral=True)
+        await interaction.response.send_message("👂 这个只有管理员才能用哦～鹅也没办法呀", ephemeral=True)
         return
 
     await interaction.response.defer(ephemeral=True)
@@ -330,7 +396,7 @@ async def upload_file(interaction: discord.Interaction, 帖子链接: str, 文�
             thread = await bot.fetch_channel(thread_id)
         post_name = thread.name
     except Exception as e:
-        await interaction.followup.send(f"❌ 链接无效或Bot无法访问该帖子。\n错误信息：{str(e)}", ephemeral=True)
+        await interaction.followup.send(f"👂 链接好像不对呀…鹅打不开这扇门\n错误信息：{str(e)}", ephemeral=True)
         return
 
     # 确定文件类型
@@ -362,7 +428,7 @@ async def upload_file(interaction: discord.Interaction, 帖子链接: str, 文�
         )
         conn.commit()
         await interaction.followup.send(
-            f"✅ 文件上传成功！\n"
+            f"👂 塞进仓库了！\n"
             f"📁 帖子：{post_name}\n"
             f"📄 文件：{文件名}\n"
             f"🏷️ 版本：{版本}\n"
@@ -370,7 +436,7 @@ async def upload_file(interaction: discord.Interaction, 帖子链接: str, 文�
             ephemeral=True
         )
     except sqlite3.IntegrityError:
-        await interaction.followup.send(f"❌ 该帖子下已存在同名同版本的文件：{文件名} {版本}", ephemeral=True)
+        await interaction.followup.send(f"👂 这个帖子下已经有同名同版本的文件啦：{文件名} {版本}", ephemeral=True)
     finally:
         conn.close()
 
@@ -384,7 +450,7 @@ async def upload_file(interaction: discord.Interaction, 帖子链接: str, 文�
 )
 async def update_file(interaction: discord.Interaction, 帖子链接: str, 文件名: str, 新版本: str, 文件: discord.Attachment):
     if not is_admin(interaction):
-        await interaction.response.send_message("❌ 只有管理员才能使用此指令。", ephemeral=True)
+        await interaction.response.send_message("👂 这个只有管理员才能用哦～鹅也没办法呀", ephemeral=True)
         return
 
     await interaction.response.defer(ephemeral=True)
@@ -396,7 +462,7 @@ async def update_file(interaction: discord.Interaction, 帖子链接: str, 文�
         thread = bot.get_channel(thread_id) or await bot.fetch_channel(thread_id)
         post_name = thread.name
     except Exception:
-        await interaction.followup.send("❌ 链接无效，请右键帖子→复制链接后粘贴。", ephemeral=True)
+        await interaction.followup.send("👂 链接好像不对哦～右键帖子→复制链接，再给鹅看看吧", ephemeral=True)
         return
 
     # 确定文件类型
@@ -425,14 +491,14 @@ async def update_file(interaction: discord.Interaction, 帖子链接: str, 文�
         )
         conn.commit()
         await interaction.followup.send(
-            f"✅ 文件更新成功！\n"
+            f"👂 更新好了！\n"
             f"📁 帖子：{post_name}\n"
             f"📄 文件：{文件名}\n"
             f"🏷️ 新版本：{新版本}",
             ephemeral=True
         )
     except sqlite3.IntegrityError:
-        await interaction.followup.send(f"❌ 版本 {新版本} 已存在。", ephemeral=True)
+        await interaction.followup.send(f"👂 版本 {新版本} 已经存在了，换个版本号吧！", ephemeral=True)
     finally:
         conn.close()
 
@@ -441,7 +507,7 @@ async def update_file(interaction: discord.Interaction, 帖子链接: str, 文�
 @app_commands.describe(帖子链接="帖子的链接（右键帖子→复制链接）")
 async def delete_file(interaction: discord.Interaction, 帖子链接: str):
     if not is_admin(interaction):
-        await interaction.response.send_message("❌ 只有管理员才能使用此指令。", ephemeral=True)
+        await interaction.response.send_message("👂 这个只有管理员才能用哦～鹅也没办法呀", ephemeral=True)
         return
 
     await interaction.response.defer(ephemeral=True)
@@ -455,7 +521,7 @@ async def delete_file(interaction: discord.Interaction, 帖子链接: str):
             thread = await bot.fetch_channel(thread_id)
         post_name = thread.name
     except Exception as e:
-        await interaction.followup.send(f"❌ 链接无效或Bot无法访问该帖子。\n错误信息：{str(e)}", ephemeral=True)
+        await interaction.followup.send(f"👂 链接好像不对呀…鹅打不开这扇门\n错误信息：{str(e)}", ephemeral=True)
         return
 
     # 查询该帖子下的所有文件
@@ -469,7 +535,7 @@ async def delete_file(interaction: discord.Interaction, 帖子链接: str):
     conn.close()
 
     if not files:
-        await interaction.followup.send(f"❌ 帖子「{post_name}」下没有任何文件。", ephemeral=True)
+        await interaction.followup.send(f"👂 帖子「{post_name}」下面还没有文件呢～", ephemeral=True)
         return
 
     # 创建文件选择菜单
@@ -482,7 +548,7 @@ async def delete_file(interaction: discord.Interaction, 帖子链接: str):
                     value=str(fid)
                 ) for fid, fname, ver in files
             ]
-            self.select = discord.ui.Select(placeholder="选择要删除的文件...", options=options)
+            self.select = discord.ui.Select(placeholder="要删掉哪个呀？选一个吧...", options=options)
             self.select.callback = self.file_selected
             self.add_item(self.select)
 
@@ -497,7 +563,7 @@ async def delete_file(interaction: discord.Interaction, 帖子链接: str):
 
             if not result:
                 conn.close()
-                await select_interaction.followup.send("❌ 文件未找到。", ephemeral=True)
+                await select_interaction.followup.send("👂 文件不见了…鹅找不到呀", ephemeral=True)
                 return
 
             fname, ver, fpath = result
@@ -515,13 +581,13 @@ async def delete_file(interaction: discord.Interaction, 帖子链接: str):
             conn.close()
 
             await select_interaction.followup.send(
-                f"✅ 文件已删除！\n"
+                f"👂 扔掉了！\n"
                 f"📄 {fname} ({ver})",
                 ephemeral=True
             )
 
     await interaction.followup.send(
-        f"🗑️ 帖子「{post_name}」下的文件，选择要删除的：",
+        f"👂 帖子「{post_name}」下的文件，要扔哪个？",
         view=DeleteSelectView(),
         ephemeral=True
     )
@@ -536,8 +602,8 @@ async def get_file(interaction: discord.Interaction):
     # 检查是否在帖子（Thread）中
     if not isinstance(channel, discord.Thread):
         embed = discord.Embed(
-            title="🛸 迷路的飞船！",
-            description="请在帖子中使用此指令哦～外星开心果的飞船只能降落在帖子里！",
+            title="👂 走错啦走错啦！",
+            description="要在帖子里面才能用这个指令哦～鹅的仓库门开在帖子里面呢！",
             color=0x00ff88
         )
         await interaction.followup.send(embed=embed, ephemeral=True)
@@ -576,8 +642,8 @@ async def get_file(interaction: discord.Interaction):
 
     if not has_reacted and not has_commented:
         embed = discord.Embed(
-            title="🐧 企鹅守卫拦住了你！",
-            description="你需要先**点赞帖子首楼** ⭐ 或**发一条评论** 💬 才能获取附件哦～\n\n这是宇宙公约的规定！",
+            title="👂 等一下等一下！",
+            description="要先给帖子首楼**点个赞** ⭐ 或者**留条评论** 💬 才能拿附件哦～\n\n这是雪山的小小规矩，拜托啦！",
             color=0xff6b6b
         )
         await interaction.followup.send(embed=embed, ephemeral=True)
@@ -592,8 +658,8 @@ async def get_file(interaction: discord.Interaction):
 
     if not file_names:
         embed = discord.Embed(
-            title="🌌 空空的宇宙...",
-            description="当前帖子还没有可用的附件，外星开心果正在努力搬运中～",
+            title="👂 仓库里空空的呀",
+            description="这个帖子还没有附件呢～等管理员放进来就好啦！",
             color=0x888888
         )
         await interaction.followup.send(embed=embed, ephemeral=True)
@@ -604,7 +670,7 @@ async def get_file(interaction: discord.Interaction):
         def __init__(self):
             super().__init__(timeout=60)
             options = [discord.SelectOption(label=name, value=name) for name in file_names]
-            self.select = discord.ui.Select(placeholder="🪐 选择你想要的文件...", options=options)
+            self.select = discord.ui.Select(placeholder="👂 想要啥？选一个吧...", options=options)
             self.select.callback = self.file_selected
             self.add_item(self.select)
 
@@ -626,7 +692,7 @@ async def get_file(interaction: discord.Interaction):
                 def __init__(self):
                     super().__init__(timeout=60)
                     options = [discord.SelectOption(label=v, value=v) for v in versions]
-                    self.select = discord.ui.Select(placeholder="✨ 选择版本...", options=options)
+                    self.select = discord.ui.Select(placeholder="👂 要哪个版本？", options=options)
                     self.select.callback = self.version_selected
                     self.add_item(self.select)
 
@@ -645,7 +711,7 @@ async def get_file(interaction: discord.Interaction):
                     conn.close()
 
                     if not result:
-                        await version_interaction.followup.send("❌ 文件未找到。", ephemeral=True)
+                        await version_interaction.followup.send("👂 文件不见了…鹅找不到呀", ephemeral=True)
                         return
 
                     file_id, file_path, file_type = result
@@ -670,7 +736,7 @@ async def get_file(interaction: discord.Interaction):
                             watermarked_bytes = file_bytes
                             ext = os.path.splitext(file_path)[1]
                     except Exception as e:
-                        await version_interaction.followup.send(f"❌ 水印嵌入失败：{str(e)}", ephemeral=True)
+                        await version_interaction.followup.send(f"👂 水印没打上去：{str(e)}", ephemeral=True)
                         return
 
                     # 记录追踪信息
@@ -689,11 +755,11 @@ async def get_file(interaction: discord.Interaction):
                         filename=f"{selected_file}_{selected_version}{ext}"
                     )
                     embed = discord.Embed(
-                        title="🛸 外星快递已送达！",
+                        title="👂 给你给你～拿好哦！",
                         description=(
                             f"📄 **{selected_file}** ({selected_version})\n\n"
-                            "🔒 此文件已被宇宙追踪系统标记\n"
-                            "🐧 企鹅守卫提醒你：请妥善保管，勿外传哦～"
+                            "🔒 鹅已经在上面做了小小的记号～\n"
+                            "要好好保管，不要到处传哦🐾"
                         ),
                         color=0x00ff88
                     )
@@ -715,8 +781,8 @@ async def get_file(interaction: discord.Interaction):
             )
 
     embed = discord.Embed(
-        title="🪐 欢迎来到外星开心果的仓库！",
-        description="请选择你想要获取的文件：",
+        title="👂 欢迎来到鹅的小仓库！",
+        description="想要什么文件呀？选一个吧～",
         color=0x7b68ee
     )
     await interaction.followup.send(
@@ -730,7 +796,7 @@ async def get_file(interaction: discord.Interaction):
 @app_commands.describe(文件="要验证的文件")
 async def verify_watermark(interaction: discord.Interaction, 文件: discord.Attachment):
     if not is_admin(interaction):
-        await interaction.response.send_message("❌ 只有管理员才能使用此指令。", ephemeral=True)
+        await interaction.response.send_message("👂 这个只有管理员才能用哦～鹅也没办法呀", ephemeral=True)
         return
 
     await interaction.response.defer(ephemeral=True)
@@ -745,7 +811,7 @@ async def verify_watermark(interaction: discord.Interaction, 文件: discord.Att
         tracking_code = extract_json_watermark(file_bytes)
 
     if not tracking_code:
-        await interaction.followup.send("❌ 未检测到水印，该文件可能未经过Bot分发或水印已被破坏。", ephemeral=True)
+        await interaction.followup.send("👂 鹅闻了闻…没有闻到水印的味道呢，可能不是从这里发出去的，或者水印被弄坏了", ephemeral=True)
         return
 
     # 查询追踪记录
@@ -761,7 +827,7 @@ async def verify_watermark(interaction: discord.Interaction, 文件: discord.Att
     if result:
         user_id, user_name, post_name, file_name, version, retrieved_at = result
         await interaction.followup.send(
-            f"🔍 **水印验证结果：**\n\n"
+            f"👂 **鹅找到啦！水印验证结果：**\n\n"
             f"🔑 追踪码：`{tracking_code}`\n"
             f"👤 用户：{user_name}（ID: {user_id}）\n"
             f"📁 帖子：{post_name}\n"
@@ -771,7 +837,7 @@ async def verify_watermark(interaction: discord.Interaction, 文件: discord.Att
         )
     else:
         await interaction.followup.send(
-            f"🔑 追踪码：`{tracking_code}`\n❌ 数据库中未找到对应记录。",
+            f"🔑 追踪码：`{tracking_code}`\n👂 鹅翻了翻，没有找到对应的记录呢…",
             ephemeral=True
         )
         
@@ -780,7 +846,7 @@ async def verify_watermark(interaction: discord.Interaction, 文件: discord.Att
 @app_commands.describe(帖子名称="要查看的帖子名称")
 async def view_tracking(interaction: discord.Interaction, 帖子名称: str):
     if not is_admin(interaction):
-        await interaction.response.send_message("❌ 只有管理员才能使用此指令。", ephemeral=True)
+        await interaction.response.send_message("👂 这个只有管理员才能用哦～鹅也没办法呀", ephemeral=True)
         return
 
     conn = sqlite3.connect(DB_PATH)
@@ -793,16 +859,526 @@ async def view_tracking(interaction: discord.Interaction, 帖子名称: str):
     conn.close()
 
     if not records:
-        await interaction.response.send_message(f"📭 帖子「{帖子名称}」暂无获取记录。", ephemeral=True)
+        await interaction.response.send_message(f"👂 帖子「{帖子名称}」还没有人来拿过呢～", ephemeral=True)
         return
 
-    text = f"📋 **帖子「{帖子名称}」的获取记录（最近20条）：**\n\n"
+    text = f"👂 **帖子「{帖子名称}」的取件记录（最近20条）：**\n\n"
     for code, user_name, file_name, version, retrieved_at in records:
         text += f"`{code}` | {user_name} | {file_name} ({version}) | {retrieved_at}\n"
 
     await interaction.response.send_message(text, ephemeral=True)
 
-# ============ 在下方添加新功能 ============
+# ============ 匿名区功能 ============
+
+def get_or_assign_nickname(user_id: int, channel_id: int) -> str:
+    """获取用户在某频道的当前轮次匿名昵称，如果没有则分配一个新的"""
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    
+    # 先查是否已有昵称
+    c.execute("SELECT nickname FROM anon_identities WHERE user_id = ? AND channel_id = ?", (user_id, channel_id))
+    result = c.fetchone()
+    if result:
+        conn.close()
+        return result[0]
+    
+    # 查询该频道已使用的昵称
+    c.execute("SELECT nickname FROM anon_identities WHERE channel_id = ?", (channel_id,))
+    used_nicknames = {row[0] for row in c.fetchall()}
+    
+    # 从昵称池中选一个未使用的
+    available = [n for n in ANON_NICKNAMES if n not in used_nicknames]
+    if not available:
+        # 如果昵称池用完了，加上数字后缀
+        nickname = random.choice(ANON_NICKNAMES) + f"·{random.randint(100, 999)}"
+    else:
+        nickname = random.choice(available)
+    
+    # 存入数据库
+    c.execute(
+        "INSERT INTO anon_identities (user_id, channel_id, nickname, assigned_at) VALUES (?, ?, ?, ?)",
+        (user_id, channel_id, nickname, datetime.now().isoformat())
+    )
+    conn.commit()
+    conn.close()
+    return nickname
+
+def is_anon_channel(guild_id: int, channel_id: int) -> bool:
+    """检查频道是否为匿名频道"""
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("SELECT 1 FROM anon_channels WHERE guild_id = ? AND channel_id = ?", (guild_id, channel_id))
+    result = c.fetchone()
+    conn.close()
+    return result is not None
+
+# ---- 定时刷新匿名昵称 ----
+@tasks.loop(hours=ANON_REFRESH_HOURS)
+async def refresh_anon_nicknames():
+    """定期清空所有匿名身份映射，下次发言时会重新分配新昵称"""
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    deleted = c.execute("DELETE FROM anon_identities").rowcount
+    conn.commit()
+    conn.close()
+    print(f"[匿名刷新] 已清空 {deleted} 条匿名身份映射，所有昵称将在下次发言时重新分配")
+    
+    # 向所有匿名频道发送刷新通知
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("SELECT channel_id FROM anon_channels")
+    channel_ids = [row[0] for row in c.fetchall()]
+    conn.close()
+    
+    for ch_id in channel_ids:
+        try:
+            channel = bot.get_channel(ch_id)
+            if channel:
+                embed = discord.Embed(
+                    title="🔄 洗牌时间到啦！",
+                    description=(
+                        "所有人的匿名代号都重新分配啦～\n"
+                        "下次 `/匿名发言` 会拿到全新的甜品身份哦！猜猜你会变成什么呀？🍦"
+                    ),
+                    color=0x88ccff
+                )
+                await channel.send(embed=embed)
+        except Exception:
+            pass
+
+@refresh_anon_nicknames.before_loop
+async def before_refresh():
+    """等待 Bot 准备就绪后再开始定时任务"""
+    await bot.wait_until_ready()
+
+# ---- 管理员：设置匿名频道 ----
+@bot.tree.command(name="设置匿名频道", description="【管理员】将当前频道设为匿名发言区")
+async def set_anon_channel(interaction: discord.Interaction):
+    if not is_admin(interaction):
+        await interaction.response.send_message("👂 这个只有管理员才能用哦～鹅也没办法呀", ephemeral=True)
+        return
+    
+    guild_id = interaction.guild_id
+    channel_id = interaction.channel_id
+    
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    try:
+        c.execute(
+            "INSERT OR REPLACE INTO anon_channels (guild_id, channel_id, set_by, set_at) VALUES (?, ?, ?, ?)",
+            (guild_id, channel_id, interaction.user.id, datetime.now().isoformat())
+        )
+        conn.commit()
+        embed = discord.Embed(
+            title="🎭 匿名区开张啦！",
+            description=(
+                f"鹅宣布～这里现在是匿名发言区！\n\n"
+                f"📢 用 `/匿名发言` 就能偷偷说话哦\n"
+                f"🍦 每个人都会分到一个冰雪甜品代号～\n"
+                f"🔄 代号每 {ANON_REFRESH_HOURS} 小时自动洗牌一次\n"
+                f"🔒 不过呢…管理员用 `/查看匿名身份` 还是能看到真实身份的哦"
+            ),
+            color=0x88ccff
+        )
+        await interaction.response.send_message(embed=embed)
+    except Exception as e:
+        await interaction.response.send_message(f"❌ 设置失败：{str(e)}", ephemeral=True)
+    finally:
+        conn.close()
+
+# ---- 管理员：取消匿名频道 ----
+@bot.tree.command(name="取消匿名频道", description="【管理员】取消当前频道的匿名发言区设置")
+async def unset_anon_channel(interaction: discord.Interaction):
+    if not is_admin(interaction):
+        await interaction.response.send_message("👂 这个只有管理员才能用哦～鹅也没办法呀", ephemeral=True)
+        return
+    
+    guild_id = interaction.guild_id
+    channel_id = interaction.channel_id
+    
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("DELETE FROM anon_channels WHERE guild_id = ? AND channel_id = ?", (guild_id, channel_id))
+    deleted = c.rowcount
+    conn.commit()
+    conn.close()
+    
+    if deleted:
+        await interaction.response.send_message("👂 好的呀，匿名区关门啦～大家的秘密鹅会好好保管的", ephemeral=True)
+    else:
+        await interaction.response.send_message("👂 这里本来就不是匿名区呀～", ephemeral=True)
+
+# ---- 管理员：手动刷新匿名昵称 ----
+@bot.tree.command(name="刷新匿名昵称", description="【管理员】立即刷新所有匿名频道的昵称分配")
+async def manual_refresh_nicknames(interaction: discord.Interaction):
+    if not is_admin(interaction):
+        await interaction.response.send_message("👂 这个只有管理员才能用哦～鹅也没办法呀", ephemeral=True)
+        return
+    
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    deleted = c.execute("DELETE FROM anon_identities").rowcount
+    conn.commit()
+    conn.close()
+    
+    # 重置定时器，从现在开始重新计时
+    refresh_anon_nicknames.restart()
+    
+    await interaction.response.send_message(
+        f"👂 洗牌完毕～清掉了 {deleted} 个旧代号，下次发言就是新身份啦！\n"
+        f"⏰ 下次自动洗牌在 {ANON_REFRESH_HOURS} 小时后哦",
+        ephemeral=True
+    )
+
+# ---- 用户：匿名发言 ----
+@bot.tree.command(name="匿名发言", description="在匿名频道中匿名发送消息")
+@app_commands.describe(
+    内容="要发送的文字内容（可选，如果只发附件可以留空）",
+    图片="要发送的图片（可选）",
+    附件="要发送的其他附件（可选）"
+)
+async def anon_speak(
+    interaction: discord.Interaction,
+    内容: str = None,
+    图片: discord.Attachment = None,
+    附件: discord.Attachment = None
+):
+    # 检查是否在匿名频道中
+    channel = interaction.channel
+    # 如果在帖子中，检查其父频道
+    target_channel_id = channel.parent_id if isinstance(channel, discord.Thread) else channel.id
+    guild_id = interaction.guild_id
+    
+    if not is_anon_channel(guild_id, target_channel_id) and not is_anon_channel(guild_id, channel.id):
+        await interaction.response.send_message(
+            "👂 这里不是匿名区哦～要去管理员设置好的匿名频道才能偷偷说话呀",
+            ephemeral=True
+        )
+        return
+    
+    # 检查是否有内容
+    if not 内容 and not 图片 and not 附件:
+        await interaction.response.send_message("👂 要说点什么呀～文字、图片、附件，总得来一个嘛！", ephemeral=True)
+        return
+    
+    await interaction.response.defer(ephemeral=True)
+    
+    # 获取/分配匿名昵称（当前轮次内保持一致）
+    nickname = get_or_assign_nickname(interaction.user.id, channel.id)
+    
+    # 构建匿名消息 Embed
+    embed = discord.Embed(
+        description=内容 if 内容 else "",
+        color=0xb0d4f1,
+        timestamp=datetime.now()
+    )
+    embed.set_author(name=nickname)
+    embed.set_footer(text="👂 匿名消息 · 要友善发言哦～")
+    
+    # 处理附件
+    files = []
+    
+    if 图片:
+        image_bytes = await 图片.read()
+        file_obj = discord.File(io.BytesIO(image_bytes), filename=图片.filename)
+        files.append(file_obj)
+        # 如果是图片，在 embed 中显示
+        if 图片.filename.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp')):
+            embed.set_image(url=f"attachment://{图片.filename}")
+    
+    if 附件:
+        attachment_bytes = await 附件.read()
+        file_obj = discord.File(io.BytesIO(attachment_bytes), filename=附件.filename)
+        files.append(file_obj)
+        # 如果附件也是图片且没有设置过 image，也显示
+        if not 图片 and 附件.filename.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp')):
+            embed.set_image(url=f"attachment://{附件.filename}")
+    
+    # 发送匿名消息
+    try:
+        if files:
+            bot_message = await channel.send(embed=embed, files=files)
+        else:
+            bot_message = await channel.send(embed=embed)
+        
+        # 记录到数据库（历史记录永久保留，不受刷新影响）
+        conn = sqlite3.connect(DB_PATH)
+        c = conn.cursor()
+        c.execute(
+            "INSERT INTO anon_messages (bot_message_id, channel_id, user_id, nickname, content, sent_at) VALUES (?, ?, ?, ?, ?, ?)",
+            (bot_message.id, channel.id, interaction.user.id, nickname, 内容 or "", datetime.now().isoformat())
+        )
+        conn.commit()
+        conn.close()
+        
+        await interaction.followup.send(
+            f"👂 嘿嘿～匿名消息发出去啦！你现在的代号是 **{nickname}**\n"
+            f"💡 在下次洗牌之前，你在这个频道都会是这个身份哦～",
+            ephemeral=True
+        )
+    except Exception as e:
+        await interaction.followup.send(f"👂 发送失败了：{str(e)}", ephemeral=True)
+
+# ---- 管理员：查看匿名身份 ----
+@bot.tree.command(name="查看匿名身份", description="【管理员】通过消息链接查看匿名者的真实身份")
+@app_commands.describe(消息链接="匿名消息的链接（右键消息→复制消息链接）")
+async def check_anon_identity(interaction: discord.Interaction, 消息链接: str):
+    if not is_admin(interaction):
+        await interaction.response.send_message("👂 这个只有管理员才能用哦～鹅也没办法呀", ephemeral=True)
+        return
+    
+    # 从链接解析消息ID
+    try:
+        parts = 消息链接.strip().split('/')
+        message_id = int(parts[-1])
+        channel_id = int(parts[-2])
+    except (ValueError, IndexError):
+        await interaction.response.send_message("👂 这个链接好像不太对呀～右键消息→复制消息链接，再试一次吧", ephemeral=True)
+        return
+    
+    # 查询数据库（从永久保留的消息记录中查）
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute(
+        "SELECT user_id, nickname, content, sent_at FROM anon_messages WHERE bot_message_id = ? AND channel_id = ?",
+        (message_id, channel_id)
+    )
+    result = c.fetchone()
+    conn.close()
+    
+    if not result:
+        await interaction.response.send_message("👂 鹅翻了翻记录…这条好像不是匿名消息呢", ephemeral=True)
+        return
+    
+    user_id, nickname, content, sent_at = result
+    
+    # 尝试获取用户信息
+    try:
+        user = await bot.fetch_user(user_id)
+        user_display = f"{user.name}（{user.display_name}）"
+    except Exception:
+        user_display = f"未知用户"
+    
+    embed = discord.Embed(
+        title="👂 鹅找到啦！",
+        color=0xff9900
+    )
+    embed.add_field(name="🎭 匿名昵称", value=nickname, inline=False)
+    embed.add_field(name="👤 真实用户", value=f"{user_display}\nID: `{user_id}`", inline=False)
+    embed.add_field(name="💬 消息内容", value=content[:200] if content else "（无文字内容）", inline=False)
+    embed.add_field(name="🕐 发送时间", value=sent_at, inline=False)
+    
+    await interaction.response.send_message(embed=embed, ephemeral=True)
+
+# ============ 角色订阅功能 ============
+
+def _build_user_subscribe_view(roles: list[discord.Role]) -> tuple[discord.Embed, discord.ui.View]:
+    """根据选中的角色列表，构建用户看到的订阅面板 embed + view"""
+    view = discord.ui.View(timeout=None)
+    
+    # 每25个角色一组（Discord下拉菜单上限）
+    chunks = [roles[i:i+25] for i in range(0, len(roles), 25)]
+    
+    for idx, chunk in enumerate(chunks):
+        options = [
+            discord.SelectOption(label=role.name, value=str(role.id))
+            for role in chunk
+        ]
+        
+        placeholder = "👂 选择你喜欢的角色吧～" if len(chunks) == 1 else f"👂 角色列表（{idx+1}/{len(chunks)}）"
+        
+        select = discord.ui.Select(
+            placeholder=placeholder,
+            min_values=0,
+            max_values=len(options),
+            options=options,
+        )
+        
+        # 这一页包含的身份组ID
+        chunk_role_ids = {r.id for r in chunk}
+        
+        # 用同步方式绑定闭包
+        def bind_callback(s, pids):
+            async def cb(si: discord.Interaction):
+                await si.response.defer(ephemeral=True)
+                guild = si.guild
+                member = si.user
+                selected_ids = {int(v) for v in si.data["values"]}
+                current_ids = {r.id for r in member.roles if r.id in pids}
+                to_add = selected_ids - current_ids
+                to_remove = current_ids - selected_ids
+                added, removed, errors = [], [], []
+                for rid in to_add:
+                    role = guild.get_role(rid)
+                    if role:
+                        try:
+                            await member.add_roles(role)
+                            added.append(role.name)
+                        except Exception:
+                            errors.append(role.name)
+                for rid in to_remove:
+                    role = guild.get_role(rid)
+                    if role:
+                        try:
+                            await member.remove_roles(role)
+                            removed.append(role.name)
+                        except Exception:
+                            errors.append(role.name)
+                lines = []
+                if added:
+                    lines.append(f"✅ 订阅了：**{'**、**'.join(added)}**")
+                if removed:
+                    lines.append(f"🔕 取消订阅了：**{'**、**'.join(removed)}**")
+                if not added and not removed:
+                    lines.append("没有变化哦～你的选择和之前一样")
+                if errors:
+                    lines.append(f"⚠️ 操作失败了：{'、'.join(errors)}（可能是鹅的权限不够呀）")
+                await si.followup.send(f"👂 {chr(10).join(lines)}", ephemeral=True)
+            s.callback = cb
+        
+        bind_callback(select, chunk_role_ids)
+        view.add_item(select)
+    
+    role_list = "、".join([f"**{r.name}**" for r in roles])
+    embed = discord.Embed(
+        title="🔔 角色身份组选择",
+        description=(
+            f"这次包含的角色：{role_list}\n\n"
+            "在下面选择你喜欢的角色吧～\n"
+            "选中就会加入对应身份组，取消选中就会退出\n"
+            "之后这个角色有新作品发布时你就能收到通知啦！🐾"
+        ),
+        color=0xffb6c1
+    )
+    embed.set_footer(text="👂 可以反复打开菜单修改选择哦～")
+    
+    return embed, view
+
+# ---- 管理员：发送订阅面板 ----
+@bot.tree.command(name="发送订阅面板", description="【管理员】发送角色身份组选择面板")
+async def send_subscribe_panel(interaction: discord.Interaction):
+    if not is_admin(interaction):
+        await interaction.response.send_message("👂 这个只有管理员才能用哦～鹅也没办法呀", ephemeral=True)
+        return
+    
+    guild = interaction.guild
+    
+    # 筛选可选的身份组：排除 @everyone、Bot身份组、管理员身份组
+    available_roles = [
+        r for r in sorted(guild.roles, key=lambda x: x.name)
+        if not r.is_default()           # 排除 @everyone
+        and not r.is_bot_managed()      # 排除 Bot 自动管理的
+        and not r.is_integration()      # 排除集成身份组
+        and r.name != ADMIN_ROLE_NAME   # 排除管理员身份组
+        and not r.permissions.administrator  # 排除有管理员权限的
+    ]
+    
+    if not available_roles:
+        await interaction.response.send_message("👂 服务器里好像没有可选的身份组呢…", ephemeral=True)
+        return
+    
+    # 构建管理员选择面板（分页，每页25个）
+    admin_view = discord.ui.View(timeout=120)
+    # 每个菜单的选择结果独立存储，key=菜单序号, value=set of role_ids
+    page_selections = {}
+    chunks = [available_roles[i:i+25] for i in range(0, len(available_roles), 25)]
+    
+    for idx, chunk in enumerate(chunks):
+        options = [
+            discord.SelectOption(label=role.name, value=str(role.id))
+            for role in chunk
+        ]
+        placeholder = "选择要放进面板的身份组～" if len(chunks) == 1 else f"身份组列表（{idx+1}/{len(chunks)}）"
+        
+        admin_select = discord.ui.Select(
+            placeholder=placeholder,
+            min_values=0,
+            max_values=len(options),
+            options=options,
+        )
+        
+        def bind_admin_cb(s, page_idx):
+            async def cb(si: discord.Interaction):
+                # 更新这一页的选择（覆盖式，支持取消选中）
+                page_selections[page_idx] = {int(v) for v in si.data["values"]}
+                # 合并所有页的选择
+                all_selected = set()
+                for page_set in page_selections.values():
+                    all_selected |= page_set
+                names = [guild.get_role(rid).name for rid in all_selected if guild.get_role(rid)]
+                names.sort()
+                await si.response.send_message(
+                    f"👂 目前已选 {len(names)} 个：{'、'.join(names) if names else '无'}\n"
+                    f"继续选其他的，或者点 ✅ 确认发送吧～",
+                    ephemeral=True
+                )
+            s.callback = cb
+        
+        bind_admin_cb(admin_select, idx)
+        admin_view.add_item(admin_select)
+    
+    # 确认按钮
+    confirm_btn = discord.ui.Button(label="✅ 确认发送", style=discord.ButtonStyle.success)
+    cancel_btn = discord.ui.Button(label="❌ 取消", style=discord.ButtonStyle.secondary)
+    
+    async def confirm_callback(btn_interaction: discord.Interaction):
+        # 合并所有页的选择
+        all_selected = set()
+        for page_set in page_selections.values():
+            all_selected |= page_set
+        
+        if not all_selected:
+            await btn_interaction.response.send_message("👂 你还没选任何身份组呢～至少选一个吧", ephemeral=True)
+            return
+        
+        # 获取选中的角色对象
+        chosen_roles = [guild.get_role(rid) for rid in all_selected]
+        chosen_roles = [r for r in chosen_roles if r is not None]
+        chosen_roles.sort(key=lambda r: r.name)
+        
+        if not chosen_roles:
+            await btn_interaction.response.send_message("👂 选中的身份组好像都不存在了…", ephemeral=True)
+            return
+        
+        # 生成用户订阅面板
+        embed, view = _build_user_subscribe_view(chosen_roles)
+        
+        # 删除管理员的选择面板消息
+        try:
+            await btn_interaction.message.delete()
+        except Exception:
+            pass
+        
+        # 发送最终面板
+        await btn_interaction.channel.send(embed=embed, view=view)
+        await btn_interaction.response.send_message("👂 订阅面板发送成功啦！", ephemeral=True)
+        admin_view.stop()
+    
+    async def cancel_callback(btn_interaction: discord.Interaction):
+        try:
+            await btn_interaction.message.delete()
+        except Exception:
+            pass
+        await btn_interaction.response.send_message("👂 好的，取消了～", ephemeral=True)
+        admin_view.stop()
+    
+    confirm_btn.callback = confirm_callback
+    cancel_btn.callback = cancel_callback
+    admin_view.add_item(confirm_btn)
+    admin_view.add_item(cancel_btn)
+    
+    admin_embed = discord.Embed(
+        title="🔧 选择要放进订阅面板的身份组",
+        description=(
+            "从下面的菜单中选择角色身份组吧～\n"
+            "可以从多个菜单里分别选，全部选好后点 **✅ 确认发送**\n\n"
+            f"📋 共有 {len(available_roles)} 个可选身份组"
+        ),
+        color=0xffa500
+    )
+    admin_embed.set_footer(text="👂 只有你能看到这个面板哦～120秒后自动过期")
+    
+    await interaction.response.send_message(embed=admin_embed, view=admin_view, ephemeral=True)
 
 # ============ 启动 Bot ============
 bot.run(BOT_TOKEN)
