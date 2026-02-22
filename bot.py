@@ -23,6 +23,7 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 # ============ Bot 启动事件 ============
 @bot.event
 async def on_ready():
+    await bot.tree.sync()
     print(f"Bot 已上线：{bot.user}")
     print(f"已连接服务器：{[g.name for g in bot.guilds]}")
 
@@ -58,6 +59,7 @@ async def help_command(ctx):
         "📖 **可用指令：**\n"
         "`!帮助` - 显示此帮助信息\n"
         "`!规则` - 查看社区规范\n"
+        "`/回顶` - 跳转到当前频道最早的一条消息\n"
     )
     await ctx.send(help_text)
 
@@ -75,17 +77,18 @@ async def rules_command(ctx):
     embed = discord.Embed()
     embed.set_image(url=PINNED_MESSAGE_GUIDE_URL)
     await ctx.send(rules_text, embed=embed)
-#
-#@bot.command(name="签到")
-#async def checkin_command(ctx):
-#    """每日签到"""
-#    await ctx.send(f"✅ {ctx.author.name} 签到成功！")
-#
+
 # ============ 在下方添加新功能 ============
-# 示例：添加新指令
-# @bot.command(name="新指令")
-# async def new_command(ctx):
-#     await ctx.send("这是新功能！")
+@bot.tree.command(name="回顶", description="跳转到当前频道最早的一条消息")
+async def scroll_to_top(interaction: discord.Interaction):
+    # 获取频道最早的一条消息
+    oldest_messages = [msg async for msg in interaction.channel.history(limit=1, oldest_first=True)]
+    if oldest_messages:
+        msg = oldest_messages[0]
+        link = f"https://discord.com/channels/{interaction.guild_id}/{interaction.channel_id}/{msg.id}"
+        await interaction.response.send_message(f"👽 开心果大王乘着UFO来了！👽：{link}", ephemeral=True)
+    else:
+        await interaction.response.send_message("这个频道还没有消息哦～", ephemeral=True)
 #
 # 示例：添加新事件监听
 # @bot.event
