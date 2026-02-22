@@ -302,10 +302,12 @@ async def upload_file(interaction: discord.Interaction, 帖子链接: str, 文�
     try:
         parts = 帖子链接.strip().split('/')
         thread_id = int(parts[-1])
-        thread = bot.get_channel(thread_id) or await bot.fetch_channel(thread_id)
+        thread = bot.get_channel(thread_id)
+        if thread is None:
+            thread = await bot.fetch_channel(thread_id)
         post_name = thread.name
-    except Exception:
-        await interaction.followup.send("❌ 链接无效，请右键帖子→复制链接后粘贴。", ephemeral=True)
+    except Exception as e:
+        await interaction.followup.send(f"❌ 链接无效或Bot无法访问该帖子。\n错误信息：{str(e)}", ephemeral=True)
         return
 
     # 确定文件类型
