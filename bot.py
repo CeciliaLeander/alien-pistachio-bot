@@ -108,10 +108,14 @@ def bits_to_text(bits):
     return ''.join(chars)
 
 def embed_image_watermark(image_bytes, tracking_code):
-    """在图片像素最低位嵌入追踪码，肉眼不可见"""
+    """在图片像素最低位嵌入追踪码，保留PNG元数据"""
     img = Image.open(io.BytesIO(image_bytes))
     original_format = img.format
     original_mode = img.mode
+    
+    # 保留PNG元数据
+    png_info = img.info if original_format == "PNG" else {}
+    
     img = img.convert("RGB")
     pixels = list(img.getdata())
 
@@ -134,7 +138,6 @@ def embed_image_watermark(image_bytes, tracking_code):
     new_img = Image.new("RGB", img.size)
     new_img.putdata(new_pixels)
 
-    # 保持原始格式和模式
     output = io.BytesIO()
     if original_mode == "RGBA":
         new_img = new_img.convert("RGBA")
@@ -142,7 +145,15 @@ def embed_image_watermark(image_bytes, tracking_code):
     if original_format == "JPEG":
         new_img.save(output, format="JPEG", quality=95)
     else:
-        new_img.save(output, format="PNG")
+        # 保留PNG的text chunks元数据
+        from PIL import PngImagePlugin
+        png_meta = PngImagePlugin.PngInfo()
+        for key, value in png_info.items():
+            if isinstance(value, str):
+                png_meta.add_text(key, value)
+            elif isinstance(value, bytes):
+                png_meta.add_text(key, value.decode('latin-1'))
+        new_img.save(output, format="PNG", pnginfo=png_meta)
 
     output.seek(0)
     return output.getvalue()
@@ -189,14 +200,14 @@ ZERO_WIDTH_CHARS = {
 REVERSE_ZERO_WIDTH = {v: k for k, v in ZERO_WIDTH_CHARS.items()}
 
 def embed_json_watermark(json_bytes, tracking_code):
-    """在 JSON 文件中用零宽字符嵌入追踪码"""
+    """在 JSON 文件末尾用零宽字符嵌入追踪码"""
     content = json_bytes.decode('utf-8')
     watermark = ''.join(ZERO_WIDTH_CHARS.get(c, '') for c in tracking_code)
-    idx = content.find('{')
-    if idx != -1:
-        content = content[:idx+1] + watermark + content[idx+1:]
-    else:
-        content = watermark + content
+    
+    # 放在文件末尾而不是JSON内部，避免解析失败
+    content = content.rstrip()
+    content = content + '\n' + watermark
+    
     return content.encode('utf-8')
 
 def extract_json_watermark(json_bytes):
