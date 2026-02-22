@@ -411,6 +411,96 @@ async def update_file(interaction: discord.Interaction, 帖子链接: str, 文�
     finally:
         conn.close()
 
+# ============ 管理员：删除附件 ============
+@bot.tree.command(name="删除附件", description="【管理员】删除指定帖子下的某个文件版本")
+@app_commands.describe(帖子链接="帖子的链接（右键帖子→复制链接）")
+async def delete_file(interaction: discord.Interaction, 帖子链接: str):
+    if not is_admin(interaction):
+        await interaction.response.send_message("❌ 只有管理员才能使用此指令。", ephemeral=True)
+        return
+
+    await interaction.response.defer(ephemeral=True)
+
+    # 从链接解析帖子ID
+    try:
+        parts = 帖子链接.strip().split('/')
+        thread_id = int(parts[-1])
+        thread = bot.get_channel(thread_id)
+        if thread is None:
+            thread = await bot.fetch_channel(thread_id)
+        post_name = thread.name
+    except Exception as e:
+        await interaction.followup.send(f"❌ 链接无效或Bot无法访问该帖子。\n错误信息：{str(e)}", ephemeral=True)
+        return
+
+    # 查询该帖子下的所有文件
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute(
+        "SELECT id, file_name, version FROM files WHERE post_name = ? ORDER BY file_name, uploaded_at DESC",
+        (post_name,)
+    )
+    files = c.fetchall()
+    conn.close()
+
+    if not files:
+        await interaction.followup.send(f"❌ 帖子「{post_name}」下没有任何文件。", ephemeral=True)
+        return
+
+    # 创建文件选择菜单
+    class DeleteSelectView(discord.ui.View):
+        def __init__(self):
+            super().__init__(timeout=60)
+            options = [
+                discord.SelectOption(
+                    label=f"{fname} ({ver})",
+                    value=str(fid)
+                ) for fid, fname, ver in files
+            ]
+            self.select = discord.ui.Select(placeholder="选择要删除的文件...", options=options)
+            self.select.callback = self.file_selected
+            self.add_item(self.select)
+
+        async def file_selected(self, select_interaction: discord.Interaction):
+            selected_id = int(self.select.values[0])
+            await select_interaction.response.defer(ephemeral=True)
+
+            conn = sqlite3.connect(DB_PATH)
+            c = conn.cursor()
+            c.execute("SELECT file_name, version, file_path FROM files WHERE id = ?", (selected_id,))
+            result = c.fetchone()
+
+            if not result:
+                conn.close()
+                await select_interaction.followup.send("❌ 文件未找到。", ephemeral=True)
+                return
+
+            fname, ver, fpath = result
+
+            # 删除实际文件
+            try:
+                if os.path.exists(fpath):
+                    os.remove(fpath)
+            except Exception:
+                pass
+
+            # 删除数据库记录
+            c.execute("DELETE FROM files WHERE id = ?", (selected_id,))
+            conn.commit()
+            conn.close()
+
+            await select_interaction.followup.send(
+                f"✅ 文件已删除！\n"
+                f"📄 {fname} ({ver})",
+                ephemeral=True
+            )
+
+    await interaction.followup.send(
+        f"🗑️ 帖子「{post_name}」下的文件，选择要删除的：",
+        view=DeleteSelectView(),
+        ephemeral=True
+    )
+    
 # ============ 用户：获取附件 ============
 @bot.tree.command(name="获取附件", description="获取当前帖子的附件文件（需先点赞首楼或评论）")
 async def get_file(interaction: discord.Interaction):
@@ -420,7 +510,12 @@ async def get_file(interaction: discord.Interaction):
 
     # 检查是否在帖子（Thread）中
     if not isinstance(channel, discord.Thread):
-        await interaction.followup.send("❌ 请在帖子中使用此指令。", ephemeral=True)
+        embed = discord.Embed(
+            title="🛸 迷路的飞船！",
+            description="请在帖子中使用此指令哦～外星开心果的飞船只能降落在帖子里！",
+            color=0x00ff88
+        )
+        await interaction.followup.send(embed=embed, ephemeral=True)
         return
 
     post_name = channel.name
@@ -455,10 +550,12 @@ async def get_file(interaction: discord.Interaction):
                 break
 
     if not has_reacted and not has_commented:
-        await interaction.followup.send(
-            "❌ 你需要先**点赞帖子首楼**或**发一条评论**才能获取附件哦～",
-            ephemeral=True
+        embed = discord.Embed(
+            title="🐧 企鹅守卫拦住了你！",
+            description="你需要先**点赞帖子首楼** ⭐ 或**发一条评论** 💬 才能获取附件哦～\n\n这是宇宙公约的规定！",
+            color=0xff6b6b
         )
+        await interaction.followup.send(embed=embed, ephemeral=True)
         return
 
     # ---- 查询该帖子下的可用文件 ----
@@ -469,7 +566,12 @@ async def get_file(interaction: discord.Interaction):
     conn.close()
 
     if not file_names:
-        await interaction.followup.send("❌ 当前帖子没有可用的附件。", ephemeral=True)
+        embed = discord.Embed(
+            title="🌌 空空的宇宙...",
+            description="当前帖子还没有可用的附件，外星开心果正在努力搬运中～",
+            color=0x888888
+        )
+        await interaction.followup.send(embed=embed, ephemeral=True)
         return
 
     # 创建文件选择菜单
@@ -477,7 +579,7 @@ async def get_file(interaction: discord.Interaction):
         def __init__(self):
             super().__init__(timeout=60)
             options = [discord.SelectOption(label=name, value=name) for name in file_names]
-            self.select = discord.ui.Select(placeholder="选择文件...", options=options)
+            self.select = discord.ui.Select(placeholder="🪐 选择你想要的文件...", options=options)
             self.select.callback = self.file_selected
             self.add_item(self.select)
 
@@ -499,7 +601,7 @@ async def get_file(interaction: discord.Interaction):
                 def __init__(self):
                     super().__init__(timeout=60)
                     options = [discord.SelectOption(label=v, value=v) for v in versions]
-                    self.select = discord.ui.Select(placeholder="选择版本...", options=options)
+                    self.select = discord.ui.Select(placeholder="✨ 选择版本...", options=options)
                     self.select.callback = self.version_selected
                     self.add_item(self.select)
 
@@ -560,20 +662,39 @@ async def get_file(interaction: discord.Interaction):
                         io.BytesIO(watermarked_bytes),
                         filename=f"{selected_file}_{selected_version}{ext}"
                     )
+                    embed = discord.Embed(
+                        title="🛸 外星快递已送达！",
+                        description=(
+                            f"📄 **{selected_file}** ({selected_version})\n\n"
+                            "🔒 此文件已被宇宙追踪系统标记\n"
+                            "🐧 企鹅守卫提醒你：请妥善保管，勿外传哦～"
+                        ),
+                        color=0x00ff88
+                    )
                     await version_interaction.followup.send(
-                        f"✅ 这是你的文件：**{selected_file}** ({selected_version})\n请妥善保管，勿外传哦～",
+                        embed=embed,
                         file=file_obj,
                         ephemeral=True
                     )
 
+            embed = discord.Embed(
+                title=f"📄 {selected_file}",
+                description="请选择你需要的版本：",
+                color=0x7b68ee
+            )
             await select_interaction.response.send_message(
-                f"📄 **{selected_file}** 有以下版本可选：",
+                embed=embed,
                 view=VersionSelectView(),
                 ephemeral=True
             )
 
+    embed = discord.Embed(
+        title="🪐 欢迎来到外星开心果的仓库！",
+        description="请选择你想要获取的文件：",
+        color=0x7b68ee
+    )
     await interaction.followup.send(
-        "📁 当前帖子有以下文件可获取：",
+        embed=embed,
         view=FileSelectView(),
         ephemeral=True
     )
