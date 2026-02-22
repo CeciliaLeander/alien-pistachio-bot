@@ -176,63 +176,41 @@ def extract_image_watermark(image_bytes):
         return text[start+2:end]
     return None
 
-# --- JSON 隐形水印（零宽字符） ---
-
-ZERO_WIDTH_CHARS = {
-    '0': '\u200b',  # 零宽空格
-    '1': '\u200c',  # 零宽非连接符
-    '2': '\u200d',  # 零宽连接符
-    '3': '\ufeff',  # 零宽不换行空格
-    '4': '\u2060',  # 词连接符
-    '5': '\u2061',  # 函数应用
-    '6': '\u2062',  # 不可见乘号
-    '7': '\u2063',  # 不可见分隔符
-    '8': '\u2064',  # 不可见加号
-    '9': '\u200e',  # 从左到右标记
-    'A': '\u200f',  # 从右到左标记
-    'B': '\u061c',  # 阿拉伯字母标记
-    'C': '\u2066',  # 从左到右隔离
-    'D': '\u2067',  # 从右到左隔离
-    'E': '\u2068',  # 首字母强隔离
-    'F': '\u2069',  # 弹出方向隔离
-}
-
-REVERSE_ZERO_WIDTH = {v: k for k, v in ZERO_WIDTH_CHARS.items()}
+# --- JSON 水印（extensions字段） ---
 
 def embed_json_watermark(json_bytes, tracking_code):
-    """在 JSON 文件中嵌入追踪码，不影响JSON解析"""
+    """在 JSON 文件的 extensions 字段中嵌入追踪码"""
     content = json_bytes.decode('utf-8')
     data = json.loads(content)
 
-    # 将追踪码转换为零宽字符
-    watermark = ''.join(ZERO_WIDTH_CHARS.get(c, '') for c in tracking_code)
-
-    # 在不影响功能的字段值末尾追加零宽字符
+    # 在 extensions 字段中存入追踪码（符合角色卡V3规范）
     if 'data' in data and isinstance(data['data'], dict):
-        if 'creator_notes' in data['data']:
-            data['data']['creator_notes'] += watermark
-        elif 'description' in data['data']:
-            data['data']['description'] += watermark
-        else:
-            data['data']['_'] = watermark
-    elif 'creator_notes' in data:
-        data['creator_notes'] += watermark
-    elif 'description' in data:
-        data['description'] += watermark
+        if 'extensions' not in data['data'] or not isinstance(data['data'].get('extensions'), dict):
+            data['data']['extensions'] = {}
+        data['data']['extensions']['tracking_id'] = tracking_code
     else:
-        data['_'] = watermark
+        if 'extensions' not in data or not isinstance(data.get('extensions'), dict):
+            data['extensions'] = {}
+        data['extensions']['tracking_id'] = tracking_code
 
     return json.dumps(data, ensure_ascii=False, indent=2).encode('utf-8')
 
 def extract_json_watermark(json_bytes):
-    """从 JSON 文件中提取零宽字符追踪码"""
+    """从 JSON 文件的 extensions 字段中提取追踪码"""
     content = json_bytes.decode('utf-8')
-    tracking_chars = []
-    for char in content:
-        if char in REVERSE_ZERO_WIDTH:
-            tracking_chars.append(REVERSE_ZERO_WIDTH[char])
-    if tracking_chars:
-        return ''.join(tracking_chars)
+    data = json.loads(content)
+
+    # 从 data.extensions 提取
+    if 'data' in data and isinstance(data['data'], dict):
+        ext = data['data'].get('extensions', {})
+        if isinstance(ext, dict) and 'tracking_id' in ext:
+            return ext['tracking_id']
+
+    # 从顶层 extensions 提取
+    ext = data.get('extensions', {})
+    if isinstance(ext, dict) and 'tracking_id' in ext:
+        return ext['tracking_id']
+
     return None
     
 # ============ Bot 启动事件 ============
