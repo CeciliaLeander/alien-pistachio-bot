@@ -110,6 +110,8 @@ def bits_to_text(bits):
 def embed_image_watermark(image_bytes, tracking_code):
     """在图片像素最低位嵌入追踪码，肉眼不可见"""
     img = Image.open(io.BytesIO(image_bytes))
+    original_format = img.format
+    original_mode = img.mode
     img = img.convert("RGB")
     pixels = list(img.getdata())
 
@@ -132,8 +134,16 @@ def embed_image_watermark(image_bytes, tracking_code):
     new_img = Image.new("RGB", img.size)
     new_img.putdata(new_pixels)
 
+    # 保持原始格式和模式
     output = io.BytesIO()
-    new_img.save(output, format="PNG")
+    if original_mode == "RGBA":
+        new_img = new_img.convert("RGBA")
+
+    if original_format == "JPEG":
+        new_img.save(output, format="JPEG", quality=95)
+    else:
+        new_img.save(output, format="PNG")
+
     output.seek(0)
     return output.getvalue()
 
@@ -181,32 +191,25 @@ REVERSE_ZERO_WIDTH = {v: k for k, v in ZERO_WIDTH_CHARS.items()}
 def embed_json_watermark(json_bytes, tracking_code):
     """在 JSON 文件中用零宽字符嵌入追踪码"""
     content = json_bytes.decode('utf-8')
-
-    # 将追踪码转换为零宽字符
     watermark = ''.join(ZERO_WIDTH_CHARS.get(c, '') for c in tracking_code)
-
-    # 在 JSON 第一个 { 后插入零宽字符
     idx = content.find('{')
     if idx != -1:
         content = content[:idx+1] + watermark + content[idx+1:]
     else:
         content = watermark + content
-
     return content.encode('utf-8')
 
 def extract_json_watermark(json_bytes):
     """从 JSON 文件中提取零宽字符追踪码"""
     content = json_bytes.decode('utf-8')
-
     tracking_chars = []
     for char in content:
         if char in REVERSE_ZERO_WIDTH:
             tracking_chars.append(REVERSE_ZERO_WIDTH[char])
-
     if tracking_chars:
         return ''.join(tracking_chars)
     return None
-
+    
 # ============ Bot 启动事件 ============
 @bot.event
 async def on_ready():
@@ -655,7 +658,8 @@ async def get_file(interaction: discord.Interaction):
                     try:
                         if file_type == "image":
                             watermarked_bytes = embed_image_watermark(file_bytes, tracking_code)
-                            ext = ".png"
+                            original_ext = os.path.splitext(file_path)[1].lower()
+                            ext = original_ext if original_ext in ('.png', '.jpg', '.jpeg') else '.png'
                         elif file_type == "json":
                             watermarked_bytes = embed_json_watermark(file_bytes, tracking_code)
                             ext = ".json"
@@ -767,7 +771,7 @@ async def verify_watermark(interaction: discord.Interaction, 文件: discord.Att
             f"🔑 追踪码：`{tracking_code}`\n❌ 数据库中未找到对应记录。",
             ephemeral=True
         )
-
+        
 # ============ 管理员：查看追踪记录 ============
 @bot.tree.command(name="查看记录", description="【管理员】查看某个帖子的所有文件获取记录")
 @app_commands.describe(帖子名称="要查看的帖子名称")
