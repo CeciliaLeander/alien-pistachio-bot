@@ -55,6 +55,27 @@ ANON_NICKNAMES = [
 # 匿名昵称自动刷新间隔（小时）
 ANON_REFRESH_HOURS = 24
 
+def emoji_to_twemoji_url(emoji_char: str) -> str:
+    """将 emoji 字符转换为 Twemoji CDN 图片 URL"""
+    # 提取 emoji 的 Unicode 码点，转为 Twemoji 的文件名格式
+    codepoints = []
+    for char in emoji_char:
+        cp = ord(char)
+        if cp == 0xFE0F:  # 跳过变体选择符
+            continue
+        codepoints.append(f"{cp:x}")
+    filename = "-".join(codepoints)
+    return f"https://cdn.jsdelivr.net/gh/twitter/twemoji@latest/assets/72x72/{filename}.png"
+
+def get_nickname_avatar_url(nickname: str) -> str:
+    """从昵称中提取 emoji 并返回对应的头像 URL"""
+    # 昵称格式为 "🍦 冰淇淋泡芙"，取第一个字符（emoji）
+    if nickname:
+        # 处理复合 emoji（如 🐻‍❄️），取空格前的部分
+        emoji_part = nickname.split(" ")[0] if " " in nickname else nickname[0]
+        return emoji_to_twemoji_url(emoji_part)
+    return "https://cdn.jsdelivr.net/gh/twitter/twemoji@latest/assets/72x72/1f9ca.png"  # 默认冰块
+
 # ============ 确保目录存在 ============
 os.makedirs(FILES_DIR, exist_ok=True)
 
@@ -1066,47 +1087,56 @@ async def anon_speak(
     # 获取/分配匿名昵称（当前轮次内保持一致）
     nickname = get_or_assign_nickname(interaction.user.id, channel.id)
     
-    # 构建匿名消息 Embed
-    embed = discord.Embed(
-        description=内容 if 内容 else "",
-        color=0xb0d4f1,
-        timestamp=datetime.now()
-    )
-    embed.set_author(name=nickname)
-    embed.set_footer(text="👂 匿名消息 · 要友善发言哦～")
+    # 获取昵称对应的 emoji 头像 URL
+    avatar_url = get_nickname_avatar_url(nickname)
     
     # 处理附件
     files = []
-    
     if 图片:
         image_bytes = await 图片.read()
-        file_obj = discord.File(io.BytesIO(image_bytes), filename=图片.filename)
-        files.append(file_obj)
-        # 如果是图片，在 embed 中显示
-        if 图片.filename.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp')):
-            embed.set_image(url=f"attachment://{图片.filename}")
-    
+        files.append(discord.File(io.BytesIO(image_bytes), filename=图片.filename))
     if 附件:
         attachment_bytes = await 附件.read()
-        file_obj = discord.File(io.BytesIO(attachment_bytes), filename=附件.filename)
-        files.append(file_obj)
-        # 如果附件也是图片且没有设置过 image，也显示
-        if not 图片 and 附件.filename.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp')):
-            embed.set_image(url=f"attachment://{附件.filename}")
+        files.append(discord.File(io.BytesIO(attachment_bytes), filename=附件.filename))
     
-    # 发送匿名消息
+    # 通过 Webhook 发送匿名消息
     try:
+        # 获取或创建频道的 Webhook
+        # 如果是帖子，需要在父频道创建 Webhook，然后发送到帖子
+        webhook_channel = channel.parent if isinstance(channel, discord.Thread) else channel
+        
+        # 查找已有的匿名 Webhook
+        webhooks = await webhook_channel.webhooks()
+        webhook = discord.utils.get(webhooks, name="小鹅子匿名")
+        
+        if not webhook:
+            webhook = await webhook_channel.create_webhook(name="小鹅子匿名")
+        
+        # 发送参数
+        send_kwargs = {
+            "username": nickname,
+            "avatar_url": avatar_url,
+            "wait": True,  # 等待返回消息对象
+        }
+        
+        if 内容:
+            send_kwargs["content"] = 内容
+        
         if files:
-            bot_message = await channel.send(embed=embed, files=files)
-        else:
-            bot_message = await channel.send(embed=embed)
+            send_kwargs["files"] = files
+        
+        # 如果在帖子中，需要指定 thread
+        if isinstance(channel, discord.Thread):
+            send_kwargs["thread"] = channel
+        
+        webhook_message = await webhook.send(**send_kwargs)
         
         # 记录到数据库（历史记录永久保留，不受刷新影响）
         conn = sqlite3.connect(DB_PATH)
         c = conn.cursor()
         c.execute(
             "INSERT INTO anon_messages (bot_message_id, channel_id, user_id, nickname, content, sent_at) VALUES (?, ?, ?, ?, ?, ?)",
-            (bot_message.id, channel.id, interaction.user.id, nickname, 内容 or "", datetime.now().isoformat())
+            (webhook_message.id, channel.id, interaction.user.id, nickname, 内容 or "", datetime.now().isoformat())
         )
         conn.commit()
         conn.close()
