@@ -284,6 +284,22 @@ async def scroll_to_top(interaction: discord.Interaction):
     else:
         await interaction.response.send_message("这个频道还没有消息哦～", ephemeral=True)
 
+# ============ 管理员：bot代发公告 ============
+@bot.command(name="公告")
+async def post_announcement(ctx):
+    if not any(role.name == ADMIN_ROLE_NAME for role in ctx.author.roles):
+        await ctx.send("❌ 只有管理员才能使用此指令。")
+        return
+
+    # 获取 !公告 后面的所有文字
+    content = ctx.message.content[len("!公告"):].strip()
+    if not content:
+        await ctx.send("❌ 请在 `!公告` 后面输入要发布的内容。")
+        return
+
+    await ctx.message.delete()  # 删除管理员发的指令消息
+    await ctx.send(content)  # Bot 发布内容
+    
 # ============ 管理员：上传附件 ============
 @bot.tree.command(name="上传附件", description="【管理员】上传文件到指定帖子")
 @app_commands.describe(
