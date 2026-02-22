@@ -319,8 +319,9 @@ async def upload_file(interaction: discord.Interaction, 帖子链接: str, 文�
     else:
         file_type = "other"
 
-    # 创建存储目录
-    post_dir = os.path.join(FILES_DIR, post_name)
+    # 创建存储目录（名称过长时用帖子ID）
+    folder_name = post_name if len(post_name.encode('utf-8')) <= 100 else str(thread_id)
+    post_dir = os.path.join(FILES_DIR, folder_name)
     os.makedirs(post_dir, exist_ok=True)
 
     # 保存文件
@@ -384,8 +385,9 @@ async def update_file(interaction: discord.Interaction, 帖子链接: str, 文�
     else:
         file_type = "other"
 
-    # 保存文件
-    post_dir = os.path.join(FILES_DIR, post_name)
+    # 保存文件（名称过长时用帖子ID）
+    folder_name = post_name if len(post_name.encode('utf-8')) <= 100 else str(thread_id)
+    post_dir = os.path.join(FILES_DIR, folder_name)
     os.makedirs(post_dir, exist_ok=True)
     file_path = os.path.join(post_dir, f"{文件名}_{新版本}{os.path.splitext(文件.filename)[1]}")
     file_bytes = await 文件.read()
