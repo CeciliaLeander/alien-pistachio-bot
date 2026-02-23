@@ -489,13 +489,13 @@ class PersistentLotteryView(discord.ui.View):
         except sqlite3.IntegrityError:
             conn.close()
             await interaction.response.send_message("👂 你已经报名过啦～不用重复参加哦", ephemeral=True)
-
-bot.add_view(PersistentLotteryView())
     
 # ============ Bot 启动事件 ============
 @bot.event
 async def on_ready():
+    bot.add_view(PersistentLotteryView())  
     await bot.tree.sync()
+    # ... 后面不变
     if not refresh_anon_nicknames.is_running():
         refresh_anon_nicknames.start()
     # 恢复未结束的定时抽奖
