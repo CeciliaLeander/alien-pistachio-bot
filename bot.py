@@ -29,7 +29,7 @@ FILES_DIR = os.path.join(DATA_DIR, "files")
 DB_PATH = os.path.join(DATA_DIR, "bot.db")
 
 # 管理员身份组名称（拥有此身份组的人才能上传/验证）
-ADMIN_ROLE_NAME = "开心果奴隶"
+ADMIN_ROLE_NAME = "开心果bot"
 
 # ============ 匿名区配置 ============
 # 冰雪甜品元素昵称池
@@ -132,6 +132,30 @@ def init_db():
         nickname TEXT NOT NULL,
         content TEXT,
         sent_at TEXT NOT NULL
+    )''')
+    # 抽奖表
+    c.execute('''CREATE TABLE IF NOT EXISTS lotteries (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        guild_id INTEGER NOT NULL,
+        channel_id INTEGER NOT NULL,
+        message_id INTEGER,
+        title TEXT NOT NULL,
+        prize TEXT NOT NULL,
+        winner_count INTEGER NOT NULL DEFAULT 1,
+        required_role_id INTEGER,
+        created_by INTEGER NOT NULL,
+        created_at TEXT NOT NULL,
+        end_time TEXT,
+        status TEXT NOT NULL DEFAULT 'active',
+        ended_at TEXT
+    )''')
+    c.execute('''CREATE TABLE IF NOT EXISTS lottery_entries (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        lottery_id INTEGER NOT NULL,
+        user_id INTEGER NOT NULL,
+        entered_at TEXT NOT NULL,
+        UNIQUE(lottery_id, user_id),
+        FOREIGN KEY (lottery_id) REFERENCES lotteries(id)
     )''')
     conn.commit()
     conn.close()
@@ -285,14 +309,211 @@ def extract_json_watermark(json_bytes):
         return ext['tracking_id']
 
     return None
+
+# ============ 抽奖工具函数 ============
+def parse_duration(duration_str: str) -> timedelta | None:
+    if not duration_str:
+        return None
+    total_seconds = 0
+    pattern = re.findall(r'(\d+)\s*([dhm])', duration_str.lower())
+    if not pattern:
+        return None
+    for value, unit in pattern:
+        value = int(value)
+        if unit == 'd':
+            total_seconds += value * 86400
+        elif unit == 'h':
+            total_seconds += value * 3600
+        elif unit == 'm':
+            total_seconds += value * 60
+    return timedelta(seconds=total_seconds) if total_seconds > 0 else None
+
+async def do_lottery_draw(bot_instance, lottery_id: int):
+    """执行抽奖开奖（定时和手动共用）"""
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("SELECT guild_id, channel_id, message_id, title, prize, winner_count, required_role_id, created_by FROM lotteries WHERE id = ? AND status = 'active'", (lottery_id,))
+    lottery = c.fetchone()
+    if not lottery:
+        conn.close()
+        return None
+    guild_id, channel_id, message_id, title, prize, winner_count, required_role_id, created_by = lottery
+    c.execute("SELECT user_id FROM lottery_entries WHERE lottery_id = ?", (lottery_id,))
+    entries = [row[0] for row in c.fetchall()]
+    c.execute("UPDATE lotteries SET status = 'ended', ended_at = ? WHERE id = ?", (datetime.now().isoformat(), lottery_id))
+    conn.commit()
+    conn.close()
+
+    if not entries:
+        winners = []
+    elif len(entries) <= winner_count:
+        winners = entries
+    else:
+        winners = random.sample(entries, winner_count)
+
+    channel = bot_instance.get_channel(channel_id)
+    if not channel:
+        try:
+            channel = await bot_instance.fetch_channel(channel_id)
+        except Exception:
+            return winners
+
+    if winners:
+        winner_mentions = ", ".join([f"<@{uid}>" for uid in winners])
+        result_embed = discord.Embed(
+            title="🎊 开奖啦开奖啦！",
+            description=f"**{title}**\n\n🎁 奖品：**{prize}**\n👥 参与人数：{len(entries)}\n🏆 中奖者：{winner_mentions}\n\n恭喜恭喜！🎉🎉🎉",
+            color=0xffd700
+        )
+    else:
+        result_embed = discord.Embed(
+            title="🎊 开奖啦…但是…",
+            description=f"**{title}**\n\n🎁 奖品：**{prize}**\n👥 参与人数：0\n\n没有人参加呀…鹅好孤单 🥲",
+            color=0x888888
+        )
+    await channel.send(embed=result_embed)
+
+    if message_id:
+        try:
+            original_msg = await channel.fetch_message(message_id)
+            ended_embed = original_msg.embeds[0] if original_msg.embeds else discord.Embed()
+            ended_embed.color = 0x888888
+            ended_embed.set_footer(text="🔒 抽奖已结束")
+            await original_msg.edit(embed=ended_embed, view=None)
+        except Exception:
+            pass
+
+    for uid in winners:
+        try:
+            user = await bot_instance.fetch_user(uid)
+            dm_embed = discord.Embed(
+                title="🎉 恭喜你中奖啦！",
+                description=f"你在抽奖 **{title}** 中被幸运选中了！\n\n🎁 奖品：**{prize}**\n📍 来自频道：<#{channel_id}>\n\n请联系管理员领取奖品哦～🐾",
+                color=0xffd700
+            )
+            await user.send(embed=dm_embed)
+        except Exception:
+            pass
+    return winners
+
+async def _lottery_timer(bot_instance, lottery_id: int, delay_seconds: float):
+    await asyncio.sleep(delay_seconds)
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("SELECT status FROM lotteries WHERE id = ?", (lottery_id,))
+    result = c.fetchone()
+    conn.close()
+    if result and result[0] == 'active':
+        await do_lottery_draw(bot_instance, lottery_id)
+
+# ============ 抽奖按钮 View ============
+class LotteryJoinView(discord.ui.View):
+    def __init__(self, lottery_id: int, required_role_id: int | None = None):
+        super().__init__(timeout=None)
+        self.lottery_id = lottery_id
+        self.required_role_id = required_role_id
+
+    @discord.ui.button(label="🎰 参加抽奖！", style=discord.ButtonStyle.success, custom_id="lottery_join")
+    async def join_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        user = interaction.user
+        conn = sqlite3.connect(DB_PATH)
+        c = conn.cursor()
+        c.execute("SELECT status, required_role_id FROM lotteries WHERE id = ?", (self.lottery_id,))
+        result = c.fetchone()
+        if not result or result[0] != 'active':
+            conn.close()
+            await interaction.response.send_message("👂 这个抽奖已经结束啦～下次早点来哦", ephemeral=True)
+            return
+        req_role_id = result[1]
+        if req_role_id:
+            member = interaction.guild.get_member(user.id)
+            if member and not any(r.id == req_role_id for r in member.roles):
+                role = interaction.guild.get_role(req_role_id)
+                role_name = role.name if role else "指定身份组"
+                conn.close()
+                await interaction.response.send_message(f"👂 需要拥有 **{role_name}** 身份组才能参加哦～", ephemeral=True)
+                return
+        try:
+            c.execute("INSERT INTO lottery_entries (lottery_id, user_id, entered_at) VALUES (?, ?, ?)",
+                      (self.lottery_id, user.id, datetime.now().isoformat()))
+            conn.commit()
+            c.execute("SELECT COUNT(*) FROM lottery_entries WHERE lottery_id = ?", (self.lottery_id,))
+            count = c.fetchone()[0]
+            conn.close()
+            await interaction.response.send_message(f"🎉 报名成功！你是第 **{count}** 位参与者～祝你好运！🍀", ephemeral=True)
+        except sqlite3.IntegrityError:
+            conn.close()
+            await interaction.response.send_message("👂 你已经报名过啦～不用重复参加哦", ephemeral=True)
+        except Exception as e:
+            conn.close()
+            await interaction.response.send_message(f"👂 报名出了点问题：{str(e)}", ephemeral=True)
+
+# ============ 持久化 View（Bot重启后按钮仍可用） ============
+class PersistentLotteryView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
+
+    @discord.ui.button(label="🎰 参加抽奖！", style=discord.ButtonStyle.success, custom_id="lottery_join")
+    async def join_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        conn = sqlite3.connect(DB_PATH)
+        c = conn.cursor()
+        c.execute("SELECT id, status, required_role_id FROM lotteries WHERE message_id = ?", (interaction.message.id,))
+        result = c.fetchone()
+        conn.close()
+        if not result:
+            await interaction.response.send_message("👂 找不到这个抽奖了…", ephemeral=True)
+            return
+        lottery_id, status, req_role_id = result
+        if status != 'active':
+            await interaction.response.send_message("👂 这个抽奖已经结束啦～下次早点来哦", ephemeral=True)
+            return
+        if req_role_id:
+            member = interaction.guild.get_member(interaction.user.id)
+            if member and not any(r.id == req_role_id for r in member.roles):
+                role = interaction.guild.get_role(req_role_id)
+                role_name = role.name if role else "指定身份组"
+                await interaction.response.send_message(f"👂 需要拥有 **{role_name}** 身份组才能参加哦～", ephemeral=True)
+                return
+        conn = sqlite3.connect(DB_PATH)
+        c = conn.cursor()
+        try:
+            c.execute("INSERT INTO lottery_entries (lottery_id, user_id, entered_at) VALUES (?, ?, ?)",
+                      (lottery_id, interaction.user.id, datetime.now().isoformat()))
+            conn.commit()
+            c.execute("SELECT COUNT(*) FROM lottery_entries WHERE lottery_id = ?", (lottery_id,))
+            count = c.fetchone()[0]
+            conn.close()
+            await interaction.response.send_message(f"🎉 报名成功！你是第 **{count}** 位参与者～祝你好运！🍀", ephemeral=True)
+        except sqlite3.IntegrityError:
+            conn.close()
+            await interaction.response.send_message("👂 你已经报名过啦～不用重复参加哦", ephemeral=True)
+
+bot.add_view(PersistentLotteryView())
     
 # ============ Bot 启动事件 ============
 @bot.event
 async def on_ready():
     await bot.tree.sync()
-    # 启动匿名昵称定时刷新
     if not refresh_anon_nicknames.is_running():
         refresh_anon_nicknames.start()
+    # 恢复未结束的定时抽奖
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("SELECT id, end_time FROM lotteries WHERE status = 'active' AND end_time IS NOT NULL")
+    pending = c.fetchall()
+    conn.close()
+    for lottery_id, end_time_str in pending:
+        try:
+            end_dt = datetime.fromisoformat(end_time_str)
+            remaining = (end_dt - datetime.now()).total_seconds()
+            if remaining <= 0:
+                asyncio.create_task(do_lottery_draw(bot, lottery_id))
+            else:
+                asyncio.create_task(_lottery_timer(bot, lottery_id, remaining))
+        except Exception as e:
+            print(f"[抽奖恢复] 恢复抽奖 #{lottery_id} 失败：{e}")
+    if pending:
+        print(f"[抽奖恢复] 已恢复 {len(pending)} 个定时抽奖")
     print(f"👂 小鹅子上线了：{bot.user}")
     print(f"👂 已连接雪山：{[g.name for g in bot.guilds]}")
 
@@ -334,6 +555,8 @@ async def help_command(ctx):
         "`/获取附件` - 从鹅的仓库里拿文件（要先点赞或评论哦）\n\n"
         "🎭 **匿名区：**\n"
         "`/匿名发言` - 在匿名频道里偷偷说话～\n\n"
+        "🎰 **抽奖功能：**\n"
+        "`/查看抽奖` - 看看有什么抽奖活动\n\n"
         "🔔 **角色订阅：**\n"
         "通过订阅面板自助选择喜欢的角色身份组，有新卡发布时就会收到通知哦～\n\n"
         "🔧 **管理员专属：**\n"
@@ -347,6 +570,9 @@ async def help_command(ctx):
         "`/查看匿名身份` - 看看匿名的人是谁\n"
         "`/刷新匿名昵称` - 重新洗牌所有匿名昵称\n"
         "`/发送订阅面板` - 发送角色身份组选择面板\n"
+        "`/创建抽奖` - 发起一个抽奖活动\n"
+        "`/手动开奖` - 立即结束抽奖并开奖\n"
+        "`/取消抽奖` - 取消进行中的抽奖\n"
     )
     await ctx.send(help_text)
 
@@ -1503,6 +1729,140 @@ async def send_subscribe_panel(interaction: discord.Interaction):
     admin_embed.set_footer(text="👂 只有你能看到这个面板哦～120秒后自动过期")
     
     await interaction.response.send_message(embed=admin_embed, view=admin_view, ephemeral=True)
+
+# ============ 抽奖指令 ============
+@bot.tree.command(name="创建抽奖", description="【管理员】在当前频道发起一个抽奖活动")
+@app_commands.describe(标题="抽奖活动名称（如：新年福利抽奖）", 奖品="奖品描述（如：限定角色卡 x1）", 中奖人数="中奖名额（默认1人）", 时长="自动开奖倒计时，留空则需手动开奖（格式：30m / 2h / 1d / 1d2h30m）", 限定身份组="仅拥有该身份组的成员才能参与（可选）")
+async def create_lottery(interaction: discord.Interaction, 标题: str, 奖品: str, 中奖人数: int = 1, 时长: str = None, 限定身份组: discord.Role = None):
+    if not is_admin(interaction):
+        await interaction.response.send_message("👂 这个只有管理员才能用哦～鹅也没办法呀", ephemeral=True)
+        return
+    if 中奖人数 < 1:
+        await interaction.response.send_message("👂 中奖人数至少要1个呀～", ephemeral=True)
+        return
+    await interaction.response.defer()
+    end_time = None
+    duration_delta = None
+    if 时长:
+        duration_delta = parse_duration(时长)
+        if not duration_delta:
+            await interaction.followup.send("👂 时长格式不对呀～例子：`30m`（30分钟）、`2h`（2小时）、`1d`（1天）、`1d2h30m`（1天2小时30分钟）", ephemeral=True)
+            return
+        end_time = datetime.now() + duration_delta
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("INSERT INTO lotteries (guild_id, channel_id, title, prize, winner_count, required_role_id, created_by, created_at, end_time, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'active')",
+        (interaction.guild_id, interaction.channel_id, 标题, 奖品, 中奖人数, 限定身份组.id if 限定身份组 else None, interaction.user.id, datetime.now().isoformat(), end_time.isoformat() if end_time else None))
+    lottery_id = c.lastrowid
+    conn.commit()
+    conn.close()
+    desc_lines = [f"🎁 **奖品：**{奖品}", f"🏆 **中奖名额：**{中奖人数} 人"]
+    if 限定身份组:
+        desc_lines.append(f"🔒 **参与条件：**需要 {限定身份组.mention} 身份组")
+    if end_time:
+        unix_ts = int(end_time.timestamp())
+        desc_lines.append(f"⏰ **开奖时间：**<t:{unix_ts}:F>（<t:{unix_ts}:R>）")
+    else:
+        desc_lines.append("⏰ **开奖方式：**管理员手动开奖")
+    desc_lines.append(f"\n🎯 **抽奖编号：**#{lottery_id}")
+    desc_lines.append("\n👇 点击下方按钮参加抽奖吧！")
+    embed = discord.Embed(title=f"🎰 {标题}", description="\n".join(desc_lines), color=0xff6b9d)
+    embed.set_footer(text="👂 小鹅子祝大家好运～中奖会私信通知哦！")
+    view = LotteryJoinView(lottery_id, 限定身份组.id if 限定身份组 else None)
+    lottery_msg = await interaction.followup.send(embed=embed, view=view, wait=True)
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("UPDATE lotteries SET message_id = ? WHERE id = ?", (lottery_msg.id, lottery_id))
+    conn.commit()
+    conn.close()
+    if duration_delta:
+        asyncio.create_task(_lottery_timer(bot, lottery_id, duration_delta.total_seconds()))
+
+@bot.tree.command(name="手动开奖", description="【管理员】立即结束指定抽奖并开奖")
+@app_commands.describe(抽奖编号="抽奖活动编号（创建时显示的 #数字）")
+async def manual_draw(interaction: discord.Interaction, 抽奖编号: int):
+    if not is_admin(interaction):
+        await interaction.response.send_message("👂 这个只有管理员才能用哦～鹅也没办法呀", ephemeral=True)
+        return
+    await interaction.response.defer(ephemeral=True)
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("SELECT status, title FROM lotteries WHERE id = ? AND guild_id = ?", (抽奖编号, interaction.guild_id))
+    result = c.fetchone()
+    conn.close()
+    if not result:
+        await interaction.followup.send("👂 找不到这个编号的抽奖呀～", ephemeral=True)
+        return
+    if result[0] != 'active':
+        await interaction.followup.send(f"👂 抽奖「{result[1]}」已经结束过了哦～", ephemeral=True)
+        return
+    winners = await do_lottery_draw(bot, 抽奖编号)
+    if winners is None:
+        await interaction.followup.send("👂 开奖失败了…", ephemeral=True)
+    elif winners:
+        winner_names = ", ".join([f"<@{uid}>" for uid in winners])
+        await interaction.followup.send(f"👂 开奖完成！中奖者：{winner_names}", ephemeral=True)
+    else:
+        await interaction.followup.send("👂 开奖了，但是没有人参加呢…", ephemeral=True)
+
+@bot.tree.command(name="取消抽奖", description="【管理员】取消一个进行中的抽奖")
+@app_commands.describe(抽奖编号="抽奖活动编号")
+async def cancel_lottery(interaction: discord.Interaction, 抽奖编号: int):
+    if not is_admin(interaction):
+        await interaction.response.send_message("👂 这个只有管理员才能用哦～鹅也没办法呀", ephemeral=True)
+        return
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("SELECT status, title, channel_id, message_id FROM lotteries WHERE id = ? AND guild_id = ?", (抽奖编号, interaction.guild_id))
+    result = c.fetchone()
+    if not result:
+        conn.close()
+        await interaction.response.send_message("👂 找不到这个编号的抽奖呀～", ephemeral=True)
+        return
+    if result[0] != 'active':
+        conn.close()
+        await interaction.response.send_message(f"👂 抽奖「{result[1]}」已经结束了，不能取消哦～", ephemeral=True)
+        return
+    title, channel_id, message_id = result[1], result[2], result[3]
+    c.execute("UPDATE lotteries SET status = 'cancelled', ended_at = ? WHERE id = ?", (datetime.now().isoformat(), 抽奖编号))
+    conn.commit()
+    conn.close()
+    if message_id:
+        try:
+            channel = bot.get_channel(channel_id)
+            if channel:
+                msg = await channel.fetch_message(message_id)
+                cancel_embed = discord.Embed(title=f"❌ {title}（已取消）", description="这个抽奖已被管理员取消了～", color=0xff4444)
+                await msg.edit(embed=cancel_embed, view=None)
+        except Exception:
+            pass
+    await interaction.response.send_message(f"👂 抽奖「{title}」已取消～", ephemeral=True)
+
+@bot.tree.command(name="查看抽奖", description="查看当前服务器进行中的抽奖")
+async def list_lotteries(interaction: discord.Interaction):
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("""SELECT l.id, l.title, l.prize, l.winner_count, l.end_time, l.channel_id,
+                  (SELECT COUNT(*) FROM lottery_entries WHERE lottery_id = l.id) as entry_count
+           FROM lotteries l WHERE l.guild_id = ? AND l.status = 'active' ORDER BY l.created_at DESC""", (interaction.guild_id,))
+    lotteries = c.fetchall()
+    conn.close()
+    if not lotteries:
+        await interaction.response.send_message("👂 目前没有进行中的抽奖哦～", ephemeral=True)
+        return
+    embed = discord.Embed(title="🎰 当前进行中的抽奖", color=0xff6b9d)
+    for lid, title, prize, winner_count, end_time, channel_id, entry_count in lotteries:
+        if end_time:
+            try:
+                end_dt = datetime.fromisoformat(end_time)
+                unix_ts = int(end_dt.timestamp())
+                time_info = f"⏰ <t:{unix_ts}:R>"
+            except Exception:
+                time_info = f"⏰ {end_time}"
+        else:
+            time_info = "⏰ 手动开奖"
+        embed.add_field(name=f"#{lid} {title}", value=f"🎁 {prize} | 🏆 {winner_count}名 | 👥 {entry_count}人参与 | {time_info}\n📍 <#{channel_id}>", inline=False)
+    await interaction.response.send_message(embed=embed, ephemeral=True)
 
 # ============ 启动 Bot ============
 bot.run(BOT_TOKEN)
