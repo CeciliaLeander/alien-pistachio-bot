@@ -575,6 +575,7 @@ async def help_command(ctx):
         "`/创建抽奖` - 发起一个抽奖活动\n"
         "`/手动开奖` - 立即结束抽奖并开奖\n"
         "`/取消抽奖` - 取消进行中的抽奖\n"
+        "`/批量删除` - 批量删除频道消息\n"
     )
     await ctx.send(help_text)
 
@@ -1259,13 +1260,9 @@ async def unset_anon_channel(interaction: discord.Interaction):
     else:
         await interaction.response.send_message("👂 这里本来就不是匿名区呀～", ephemeral=True)
 
-# ---- 管理员：手动刷新匿名昵称 ----
+# ---- 全员：手动刷新匿名昵称 ----
 @bot.tree.command(name="刷新匿名昵称", description="【管理员】立即刷新所有匿名频道的昵称分配")
 async def manual_refresh_nicknames(interaction: discord.Interaction):
-    if not is_admin(interaction):
-        await interaction.response.send_message("👂 这个只有管理员才能用哦～鹅也没办法呀", ephemeral=True)
-        return
-    
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     deleted = c.execute("DELETE FROM anon_identities").rowcount
@@ -1865,6 +1862,70 @@ async def list_lotteries(interaction: discord.Interaction):
             time_info = "⏰ 手动开奖"
         embed.add_field(name=f"#{lid} {title}", value=f"🎁 {prize} | 🏆 {winner_count}名 | 👥 {entry_count}人参与 | {time_info}\n📍 <#{channel_id}>", inline=False)
     await interaction.response.send_message(embed=embed, ephemeral=True)
+
+# ============ 管理员：批量删除消息 ============
+@bot.tree.command(name="批量删除", description="【管理员】删除当前频道的消息")
+@app_commands.describe(
+    数量="要删除的消息数量（1-100）",
+    用户="只删除该用户的消息（可选）"
+)
+async def bulk_delete(interaction: discord.Interaction, 数量: int, 用户: discord.Member = None):
+    if not is_admin(interaction):
+        await interaction.response.send_message("👂 这个只有管理员才能用哦～鹅也没办法呀", ephemeral=True)
+        return
+
+    if 数量 < 1 or 数量 > 100:
+        await interaction.response.send_message("👂 数量要在 1~100 之间哦～", ephemeral=True)
+        return
+
+    await interaction.response.defer(ephemeral=True)
+
+    channel = interaction.channel
+    deleted_count = 0
+
+    if 用户:
+        # 指定用户：逐条检查并删除
+        messages_to_delete = []
+        async for msg in channel.history(limit=200):
+            if msg.author.id == 用户.id:
+                messages_to_delete.append(msg)
+                if len(messages_to_delete) >= 数量:
+                    break
+
+        # 14天内的消息可以批量删除，超过14天的逐条删
+        from datetime import timezone
+        now = datetime.now(timezone.utc)
+        recent = [m for m in messages_to_delete if (now - m.created_at).days < 14]
+        old = [m for m in messages_to_delete if (now - m.created_at).days >= 14]
+
+        if recent:
+            # 批量删除需要至少2条，1条用单独删除
+            if len(recent) >= 2:
+                await channel.delete_messages(recent)
+            else:
+                await recent[0].delete()
+            deleted_count += len(recent)
+
+        for msg in old:
+            try:
+                await msg.delete()
+                deleted_count += 1
+            except Exception:
+                pass
+
+        await interaction.followup.send(
+            f"👂 清理完毕！删掉了 **{用户.display_name}** 的 **{deleted_count}** 条消息～",
+            ephemeral=True
+        )
+    else:
+        # 不指定用户：直接批量删除最近的N条
+        deleted = await channel.purge(limit=数量)
+        deleted_count = len(deleted)
+
+        await interaction.followup.send(
+            f"👂 清理完毕！删掉了 **{deleted_count}** 条消息～",
+            ephemeral=True
+        )
 
 # ============ 启动 Bot ============
 bot.run(BOT_TOKEN)
