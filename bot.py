@@ -1862,68 +1862,141 @@ async def list_lotteries(interaction: discord.Interaction):
     await interaction.response.send_message(embed=embed, ephemeral=True)
 
 # ============ 管理员：批量删除消息 ============
-@bot.tree.command(name="批量删除", description="【管理员】删除当前频道的消息")
+@bot.tree.command(name="批量删除", description="【管理员】删除当前频道指定范围的消息")
 @app_commands.describe(
-    数量="要删除的消息数量（1-100）",
+    起点消息链接="从哪条消息开始删（右键消息→复制消息链接）",
+    终点消息链接="删到哪条消息为止（可选，不填则删到最新消息）",
     用户="只删除该用户的消息（可选）"
 )
-async def bulk_delete(interaction: discord.Interaction, 数量: int, 用户: discord.Member = None):
+async def bulk_delete(
+    interaction: discord.Interaction,
+    起点消息链接: str,
+    终点消息链接: str = None,
+    用户: discord.Member = None
+):
     if not is_admin(interaction):
         await interaction.response.send_message("👂 这个只有管理员才能用哦～鹅也没办法呀", ephemeral=True)
         return
 
-    if 数量 < 1 or 数量 > 100:
-        await interaction.response.send_message("👂 数量要在 1~100 之间哦～", ephemeral=True)
+    # ---- 解析起点消息链接 ----
+    try:
+        parts = 起点消息链接.strip().split('/')
+        start_msg_id = int(parts[-1])
+        start_channel_id = int(parts[-2])
+    except (ValueError, IndexError):
+        await interaction.response.send_message("👂 起点消息链接格式不对呀～右键消息→复制消息链接，再试试吧", ephemeral=True)
         return
+
+    # 检查链接是否属于当前频道
+    channel = interaction.channel
+    current_channel_id = channel.id
+    if start_channel_id != current_channel_id:
+        await interaction.response.send_message("👂 起点消息不在当前频道哦～要在同一个频道里操作呀", ephemeral=True)
+        return
+
+    # ---- 解析终点消息链接（可选） ----
+    end_msg_id = None
+    if 终点消息链接:
+        try:
+            parts = 终点消息链接.strip().split('/')
+            end_msg_id = int(parts[-1])
+            end_channel_id = int(parts[-2])
+        except (ValueError, IndexError):
+            await interaction.response.send_message("👂 终点消息链接格式不对呀～右键消息→复制消息链接，再试试吧", ephemeral=True)
+            return
+        if end_channel_id != current_channel_id:
+            await interaction.response.send_message("👂 终点消息不在当前频道哦～要在同一个频道里操作呀", ephemeral=True)
+            return
 
     await interaction.response.defer(ephemeral=True)
 
-    channel = interaction.channel
+    # ---- 验证起点消息是否存在 ----
+    try:
+        start_msg = await channel.fetch_message(start_msg_id)
+    except discord.NotFound:
+        await interaction.followup.send("👂 起点消息不存在呀…可能已经被删了？", ephemeral=True)
+        return
+
+    # ---- 验证终点消息（如果有） ----
+    end_msg = None
+    if end_msg_id:
+        try:
+            end_msg = await channel.fetch_message(end_msg_id)
+        except discord.NotFound:
+            await interaction.followup.send("👂 终点消息不存在呀…可能已经被删了？", ephemeral=True)
+            return
+
+    # ---- 确保起点在终点之前（用消息ID判断，ID越大越新） ----
+    if end_msg and start_msg_id > end_msg_id:
+        # 自动交换，用户可能填反了
+        start_msg_id, end_msg_id = end_msg_id, start_msg_id
+        start_msg, end_msg = end_msg, start_msg
+
+    # ---- 收集范围内的消息 ----
+    messages_to_delete = []
+
+    if end_msg:
+        # 有终点：收集从起点到终点之间的所有消息
+        # after=起点之前一点（包含起点本身），before=终点之后一点（包含终点本身）
+        async for msg in channel.history(limit=500, after=discord.Object(id=start_msg_id - 1), before=discord.Object(id=end_msg_id + 1)):
+            if 用户 and msg.author.id != 用户.id:
+                continue
+            messages_to_delete.append(msg)
+    else:
+        # 无终点：从起点开始一直到最新消息
+        async for msg in channel.history(limit=500, after=discord.Object(id=start_msg_id - 1)):
+            if 用户 and msg.author.id != 用户.id:
+                continue
+            messages_to_delete.append(msg)
+
+    if not messages_to_delete:
+        await interaction.followup.send("👂 这个范围内没有找到要删的消息呢～", ephemeral=True)
+        return
+
+    # ---- 安全上限提示 ----
+    if len(messages_to_delete) > 200:
+        await interaction.followup.send(
+            f"👂 范围内有 **{len(messages_to_delete)}** 条消息，超过200条了！\n"
+            "为了安全，鹅最多一次删200条哦～请缩小范围再试试吧",
+            ephemeral=True
+        )
+        return
+
+    # ---- 执行删除 ----
+    from datetime import timezone
+    now = datetime.now(timezone.utc)
+    # Discord 批量删除只支持14天内的消息
+    recent = [m for m in messages_to_delete if (now - m.created_at).days < 14]
+    old = [m for m in messages_to_delete if (now - m.created_at).days >= 14]
+
     deleted_count = 0
 
+    # 14天内的消息：批量删除（每次最多100条）
+    for i in range(0, len(recent), 100):
+        batch = recent[i:i + 100]
+        if len(batch) >= 2:
+            await channel.delete_messages(batch)
+        elif len(batch) == 1:
+            await batch[0].delete()
+        deleted_count += len(batch)
+
+    # 超过14天的消息：逐条删除
+    for msg in old:
+        try:
+            await msg.delete()
+            deleted_count += 1
+            await asyncio.sleep(0.5)  # 避免触发速率限制
+        except Exception:
+            pass
+
+    # ---- 结果反馈 ----
+    result_parts = [f"👂 清理完毕！删掉了 **{deleted_count}** 条消息～"]
     if 用户:
-        # 指定用户：逐条检查并删除
-        messages_to_delete = []
-        async for msg in channel.history(limit=200):
-            if msg.author.id == 用户.id:
-                messages_to_delete.append(msg)
-                if len(messages_to_delete) >= 数量:
-                    break
+        result_parts[0] = f"👂 清理完毕！删掉了 **{用户.display_name}** 的 **{deleted_count}** 条消息～"
+    if old:
+        result_parts.append(f"（其中 {len(old)} 条是超过14天的旧消息，逐条删除的，比较慢请见谅）")
 
-        # 14天内的消息可以批量删除，超过14天的逐条删
-        from datetime import timezone
-        now = datetime.now(timezone.utc)
-        recent = [m for m in messages_to_delete if (now - m.created_at).days < 14]
-        old = [m for m in messages_to_delete if (now - m.created_at).days >= 14]
-
-        if recent:
-            # 批量删除需要至少2条，1条用单独删除
-            if len(recent) >= 2:
-                await channel.delete_messages(recent)
-            else:
-                await recent[0].delete()
-            deleted_count += len(recent)
-
-        for msg in old:
-            try:
-                await msg.delete()
-                deleted_count += 1
-            except Exception:
-                pass
-
-        await interaction.followup.send(
-            f"👂 清理完毕！删掉了 **{用户.display_name}** 的 **{deleted_count}** 条消息～",
-            ephemeral=True
-        )
-    else:
-        # 不指定用户：直接批量删除最近的N条
-        deleted = await channel.purge(limit=数量)
-        deleted_count = len(deleted)
-
-        await interaction.followup.send(
-            f"👂 清理完毕！删掉了 **{deleted_count}** 条消息～",
-            ephemeral=True
-        )
+    await interaction.followup.send("\n".join(result_parts), ephemeral=True)
 
 # ============ 启动 Bot ============
 bot.run(BOT_TOKEN)
