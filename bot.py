@@ -15,6 +15,7 @@ from discord import app_commands
 # ============ 基础配置 ============
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 WELCOME_CHANNEL_ID = 1446888253884989515  # 欢迎频道ID
+GUILD_ID = 1446888252194816132
 
 # 新人提问频道跳转链接
 NEWBIE_QA_LINK = "https://discord.com/channels/1446888252194816132/1447518124696928357"  # 新人提问频道链接
@@ -494,7 +495,7 @@ class PersistentLotteryView(discord.ui.View):
 @bot.event
 async def on_ready():
     bot.add_view(PersistentLotteryView())
-    guild = discord.Object(id=1446888252194816132)  # 你的服务器ID
+    guild = discord.Object(id=GUILD_ID)
     bot.tree.copy_global_to(guild=guild)
     await bot.tree.sync(guild=guild)
     
