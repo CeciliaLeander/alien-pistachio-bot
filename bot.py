@@ -493,11 +493,14 @@ class PersistentLotteryView(discord.ui.View):
 # ============ Bot 启动事件 ============
 @bot.event
 async def on_ready():
-    bot.add_view(PersistentLotteryView())  
-    await bot.tree.sync()
-    # ... 后面不变
+    bot.add_view(PersistentLotteryView())
+    guild = discord.Object(id=1446888252194816132)  # 你的服务器ID
+    bot.tree.copy_global_to(guild=guild)
+    await bot.tree.sync(guild=guild)
+    
     if not refresh_anon_nicknames.is_running():
         refresh_anon_nicknames.start()
+
     # 恢复未结束的定时抽奖
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
