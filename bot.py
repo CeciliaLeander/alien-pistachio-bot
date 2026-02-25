@@ -160,6 +160,30 @@ def init_db():
         UNIQUE(lottery_id, user_id),
         FOREIGN KEY (lottery_id) REFERENCES lotteries(id)
     )''')
+
+    # ========== 订阅面板持久化表 ==========
+    c.execute('''CREATE TABLE IF NOT EXISTS subscribe_panels (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        message_id INTEGER NOT NULL UNIQUE,
+        channel_id INTEGER NOT NULL,
+        guild_id INTEGER NOT NULL,
+        role_ids TEXT NOT NULL,
+        created_at TEXT NOT NULL
+    )''')
+    
+    # ========== 临时身份组表 ==========
+    c.execute('''CREATE TABLE IF NOT EXISTS temp_roles (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        guild_id INTEGER NOT NULL,
+        user_id INTEGER NOT NULL,
+        role_id INTEGER NOT NULL,
+        granted_by INTEGER NOT NULL,
+        granted_at TEXT NOT NULL,
+        expire_at TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'active',
+        UNIQUE(guild_id, user_id, role_id)
+    )''')
+
     conn.commit()
     conn.close()
 
@@ -502,7 +526,7 @@ async def on_ready():
     if not refresh_anon_nicknames.is_running():
         refresh_anon_nicknames.start()
 
-    # 恢复未结束的定时抽奖
+    # ========== 恢复未结束的定时抽奖 ==========
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     c.execute("SELECT id, end_time FROM lotteries WHERE status = 'active' AND end_time IS NOT NULL")
@@ -520,6 +544,48 @@ async def on_ready():
             print(f"[抽奖恢复] 恢复抽奖 #{lottery_id} 失败：{e}")
     if pending:
         print(f"[抽奖恢复] 已恢复 {len(pending)} 个定时抽奖")
+
+    # ========== 恢复订阅面板 ==========
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("SELECT message_id, channel_id, guild_id, role_ids FROM subscribe_panels")
+    panels = c.fetchall()
+    conn.close()
+    for msg_id, ch_id, g_id, role_ids_json in panels:
+        try:
+            role_ids = json.loads(role_ids_json)
+            guild_obj = bot.get_guild(g_id)
+            if not guild_obj:
+                continue
+            roles = [guild_obj.get_role(rid) for rid in role_ids]
+            roles = [r for r in roles if r is not None]
+            if roles:
+                view = build_persistent_subscribe_view(roles)
+                bot.add_view(view, message_id=msg_id)
+        except Exception as e:
+            print(f"[订阅面板恢复] 恢复面板 {msg_id} 失败：{e}")
+    if panels:
+        print(f"[订阅面板恢复] 已恢复 {len(panels)} 个订阅面板")
+
+    # ========== 恢复临时身份组定时器 ==========
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("SELECT id, guild_id, user_id, role_id, expire_at FROM temp_roles WHERE status = 'active'")
+    temp_entries = c.fetchall()
+    conn.close()
+    for tr_id, g_id, u_id, r_id, expire_at_str in temp_entries:
+        try:
+            expire_dt = datetime.fromisoformat(expire_at_str)
+            remaining = (expire_dt - datetime.now()).total_seconds()
+            if remaining <= 0:
+                asyncio.create_task(_remove_temp_role(bot, tr_id))
+            else:
+                asyncio.create_task(_temp_role_timer(bot, tr_id, remaining))
+        except Exception as e:
+            print(f"[临时身份组恢复] 恢复 #{tr_id} 失败：{e}")
+    if temp_entries:
+        print(f"[临时身份组恢复] 已恢复 {len(temp_entries)} 个临时身份组")
+
     print(f"👂 小鹅子上线了：{bot.user}")
     print(f"👂 已连接雪山：{[g.name for g in bot.guilds]}")
 
@@ -530,7 +596,7 @@ async def on_member_join(member):
         f"👂 哇！{member.name} 来啦来啦！\n"
         "小鹅子在这里！鹅是一只外星企鹅留在开心果雪山的进食器官～虽然没有眼睛也没有大脑，但是会努力当好管家的！\n\n"
         "**新朋友看这里呀：**\n"
-        f"1. 雪山的规矩和板块介绍在这里哦：{RULES_LINK}\n"
+        f"1. 雪山的规矩和板块介绍在这里哦：{RULES_LINK} ，社区公告在这里哦，有趣的社区事情在这里播报：\n"
         "2. 看完能接受的话，若您不是lc或wbz成员，可以去新人提问区@【发卡组】或名称含有「新人bot」相关的老师礼貌申请卡区身份组：可颂🥐\n"
         "3. 记得善用频道标注功能哦，有标注的都是重要消息！\n"
         f"4. 有问题来这里问就好啦：{NEWBIE_QA_LINK}\n\n"
@@ -578,6 +644,8 @@ async def help_command(ctx):
         "`/手动开奖` - 立即结束抽奖并开奖\n"
         "`/取消抽奖` - 取消进行中的抽奖\n"
         "`/批量删除` - 批量删除频道消息\n"
+	"`/发放临时身份组` - 给成员发放有时限的身份组\n"
+        "`/临时身份组列表` - 查看/管理所有临时身份组\\n"
     )
     await ctx.send(help_text)
 
@@ -1521,13 +1589,11 @@ async def check_anon_identity(interaction: discord.Interaction, 消息链接: st
     
     await interaction.response.send_message(embed=embed, ephemeral=True)
 
-# ============ 角色订阅功能 ============
+# ============ 角色订阅功能（持久化版） ============
 
-def _build_user_subscribe_view(roles: list[discord.Role]) -> tuple[discord.Embed, discord.ui.View]:
-    """根据选中的角色列表，构建用户看到的订阅面板 embed + view"""
+def build_persistent_subscribe_view(roles: list) -> discord.ui.View:
+    """构建持久化的订阅面板 View，bot重启后仍可用"""
     view = discord.ui.View(timeout=None)
-    
-    # 每25个角色一组（Discord下拉菜单上限）
     chunks = [roles[i:i+25] for i in range(0, len(roles), 25)]
     
     for idx, chunk in enumerate(chunks):
@@ -1535,7 +1601,6 @@ def _build_user_subscribe_view(roles: list[discord.Role]) -> tuple[discord.Embed
             discord.SelectOption(label=role.name, value=str(role.id))
             for role in chunk
         ]
-        
         placeholder = "👂 选择你喜欢的角色吧～" if len(chunks) == 1 else f"👂 角色列表（{idx+1}/{len(chunks)}）"
         
         select = discord.ui.Select(
@@ -1543,12 +1608,11 @@ def _build_user_subscribe_view(roles: list[discord.Role]) -> tuple[discord.Embed
             min_values=0,
             max_values=len(options),
             options=options,
+            custom_id=f"subscribe_select_{idx}",
         )
         
-        # 这一页包含的身份组ID
         chunk_role_ids = {r.id for r in chunk}
         
-        # 用同步方式绑定闭包
         def bind_callback(s, pids):
             async def cb(si: discord.Interaction):
                 await si.response.defer(ephemeral=True)
@@ -1590,22 +1654,9 @@ def _build_user_subscribe_view(roles: list[discord.Role]) -> tuple[discord.Embed
         bind_callback(select, chunk_role_ids)
         view.add_item(select)
     
-    role_list = "、".join([f"**{r.name}**" for r in roles])
-    embed = discord.Embed(
-        title="🔔 角色身份组选择",
-        description=(
-            f"这次包含的角色：{role_list}\n\n"
-            "在下面选择你喜欢的角色吧～\n"
-            "选中就会加入对应身份组，取消选中就会退出\n"
-            "之后这个角色有新作品发布时你就能收到通知啦！🐾"
-        ),
-        color=0xffb6c1
-    )
-    embed.set_footer(text="👂 可以反复打开菜单修改选择哦～")
-    
-    return embed, view
+    return view
 
-# ---- 管理员：发送订阅面板 ----
+## 管理员发送身份组选择面板
 @bot.tree.command(name="发送订阅面板", description="【管理员】发送角色身份组选择面板")
 async def send_subscribe_panel(interaction: discord.Interaction):
     if not is_admin(interaction):
@@ -1613,24 +1664,20 @@ async def send_subscribe_panel(interaction: discord.Interaction):
         return
     
     guild = interaction.guild
-    
-    # 筛选可选的身份组：排除 @everyone、Bot身份组、管理员身份组
     available_roles = [
         r for r in sorted(guild.roles, key=lambda x: x.name)
-        if not r.is_default()           # 排除 @everyone
-        and not r.is_bot_managed()      # 排除 Bot 自动管理的
-        and not r.is_integration()      # 排除集成身份组
-        and r.name != ADMIN_ROLE_NAME   # 排除管理员身份组
-        and not r.permissions.administrator  # 排除有管理员权限的
+        if not r.is_default()
+        and not r.is_bot_managed()
+        and not r.is_integration()
+        and r.name != ADMIN_ROLE_NAME
+        and not r.permissions.administrator
     ]
     
     if not available_roles:
         await interaction.response.send_message("👂 服务器里好像没有可选的身份组呢…", ephemeral=True)
         return
     
-    # 构建管理员选择面板（分页，每页25个）
     admin_view = discord.ui.View(timeout=120)
-    # 每个菜单的选择结果独立存储，key=菜单序号, value=set of role_ids
     page_selections = {}
     chunks = [available_roles[i:i+25] for i in range(0, len(available_roles), 25)]
     
@@ -1640,19 +1687,13 @@ async def send_subscribe_panel(interaction: discord.Interaction):
             for role in chunk
         ]
         placeholder = "选择要放进面板的身份组～" if len(chunks) == 1 else f"身份组列表（{idx+1}/{len(chunks)}）"
-        
         admin_select = discord.ui.Select(
-            placeholder=placeholder,
-            min_values=0,
-            max_values=len(options),
-            options=options,
+            placeholder=placeholder, min_values=0, max_values=len(options), options=options,
         )
         
         def bind_admin_cb(s, page_idx):
             async def cb(si: discord.Interaction):
-                # 更新这一页的选择（覆盖式，支持取消选中）
                 page_selections[page_idx] = {int(v) for v in si.data["values"]}
-                # 合并所有页的选择
                 all_selected = set()
                 for page_set in page_selections.values():
                     all_selected |= page_set
@@ -1664,44 +1705,59 @@ async def send_subscribe_panel(interaction: discord.Interaction):
                     ephemeral=True
                 )
             s.callback = cb
-        
         bind_admin_cb(admin_select, idx)
         admin_view.add_item(admin_select)
     
-    # 确认按钮
     confirm_btn = discord.ui.Button(label="✅ 确认发送", style=discord.ButtonStyle.success)
     cancel_btn = discord.ui.Button(label="❌ 取消", style=discord.ButtonStyle.secondary)
     
     async def confirm_callback(btn_interaction: discord.Interaction):
-        # 合并所有页的选择
         all_selected = set()
         for page_set in page_selections.values():
             all_selected |= page_set
-        
         if not all_selected:
             await btn_interaction.response.send_message("👂 你还没选任何身份组呢～至少选一个吧", ephemeral=True)
             return
-        
-        # 获取选中的角色对象
         chosen_roles = [guild.get_role(rid) for rid in all_selected]
         chosen_roles = [r for r in chosen_roles if r is not None]
         chosen_roles.sort(key=lambda r: r.name)
-        
         if not chosen_roles:
             await btn_interaction.response.send_message("👂 选中的身份组好像都不存在了…", ephemeral=True)
             return
         
-        # 生成用户订阅面板
-        embed, view = _build_user_subscribe_view(chosen_roles)
+        role_list = "、".join([f"**{r.name}**" for r in chosen_roles])
+        embed = discord.Embed(
+            title="🔔 角色身份组选择",
+            description=(
+                f"这次包含的角色：{role_list}\n\n"
+                "在下面选择你喜欢的角色吧～\n"
+                "选中就会加入对应身份组，取消选中就会退出\n"
+                "之后这个角色有新作品发布时你就能收到通知啦！🐾"
+            ),
+            color=0xffb6c1
+        )
+        embed.set_footer(text="👂 可以反复打开菜单修改选择哦～")
         
-        # 删除管理员的选择面板消息
+        view = build_persistent_subscribe_view(chosen_roles)
+        
         try:
             await btn_interaction.message.delete()
         except Exception:
             pass
         
-        # 发送最终面板
-        await btn_interaction.channel.send(embed=embed, view=view)
+        panel_msg = await btn_interaction.channel.send(embed=embed, view=view)
+        
+        # 存入数据库，bot重启时恢复
+        role_ids_json = json.dumps([r.id for r in chosen_roles])
+        conn = sqlite3.connect(DB_PATH)
+        c = conn.cursor()
+        c.execute(
+            "INSERT INTO subscribe_panels (message_id, channel_id, guild_id, role_ids, created_at) VALUES (?, ?, ?, ?, ?)",
+            (panel_msg.id, btn_interaction.channel_id, guild.id, role_ids_json, datetime.now().isoformat())
+        )
+        conn.commit()
+        conn.close()
+        
         await btn_interaction.response.send_message("👂 订阅面板发送成功啦！", ephemeral=True)
         admin_view.stop()
     
@@ -1728,7 +1784,6 @@ async def send_subscribe_panel(interaction: discord.Interaction):
         color=0xffa500
     )
     admin_embed.set_footer(text="👂 只有你能看到这个面板哦～120秒后自动过期")
-    
     await interaction.response.send_message(embed=admin_embed, view=admin_view, ephemeral=True)
 
 # ============ 抽奖指令 ============
@@ -1864,6 +1919,247 @@ async def list_lotteries(interaction: discord.Interaction):
             time_info = "⏰ 手动开奖"
         embed.add_field(name=f"#{lid} {title}", value=f"🎁 {prize} | 🏆 {winner_count}名 | 👥 {entry_count}人参与 | {time_info}\n📍 <#{channel_id}>", inline=False)
     await interaction.response.send_message(embed=embed, ephemeral=True)
+
+# ============ 临时身份组功能 ============
+
+def parse_expire_time(time_str: str):
+    """解析到期时间，支持时长格式(30m/2h/7d)和日期格式(2025-03-01 12:00)"""
+    if not time_str:
+        return None
+    delta = parse_duration(time_str)
+    if delta:
+        return datetime.now() + delta
+    for fmt in ("%Y-%m-%d %H:%M", "%Y-%m-%d", "%Y/%m/%d %H:%M", "%Y/%m/%d"):
+        try:
+            return datetime.strptime(time_str.strip(), fmt)
+        except ValueError:
+            continue
+    return None
+
+
+async def _remove_temp_role(bot_instance, temp_role_id: int):
+    """移除临时身份组"""
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("SELECT guild_id, user_id, role_id FROM temp_roles WHERE id = ? AND status = 'active'", (temp_role_id,))
+    result = c.fetchone()
+    if not result:
+        conn.close()
+        return
+    guild_id, user_id, role_id = result
+    c.execute("UPDATE temp_roles SET status = 'expired' WHERE id = ?", (temp_role_id,))
+    conn.commit()
+    conn.close()
+    
+    try:
+        guild = bot_instance.get_guild(guild_id)
+        if not guild:
+            return
+        member = guild.get_member(user_id)
+        if not member:
+            try:
+                member = await guild.fetch_member(user_id)
+            except Exception:
+                return
+        role = guild.get_role(role_id)
+        if role and role in member.roles:
+            await member.remove_roles(role, reason="临时身份组到期")
+            try:
+                dm_embed = discord.Embed(
+                    title="⏰ 临时身份组到期啦",
+                    description=(
+                        f"你在 **{guild.name}** 的临时身份组 **{role.name}** 已到期，已自动移除～\n\n"
+                        "如有需要可以联系管理员哦🐾"
+                    ),
+                    color=0xffaa00
+                )
+                await member.send(embed=dm_embed)
+            except Exception:
+                pass
+    except Exception as e:
+        print(f"[临时身份组] 移除 #{temp_role_id} 失败：{e}")
+
+
+async def _temp_role_timer(bot_instance, temp_role_id: int, delay_seconds: float):
+    """等待后自动移除临时身份组"""
+    await asyncio.sleep(delay_seconds)
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("SELECT status FROM temp_roles WHERE id = ?", (temp_role_id,))
+    result = c.fetchone()
+    conn.close()
+    if result and result[0] == 'active':
+        await _remove_temp_role(bot_instance, temp_role_id)
+
+
+@bot.tree.command(name="发放临时身份组", description="【管理员】给成员发放有时限的身份组")
+@app_commands.describe(
+    成员="要发放给谁",
+    身份组="要发放的身份组",
+    到期时间="时长(30m/2h/7d/1d12h)或日期(2025-03-01 12:00)"
+)
+async def grant_temp_role(
+    interaction: discord.Interaction,
+    成员: discord.Member,
+    身份组: discord.Role,
+    到期时间: str
+):
+    if not is_admin(interaction):
+        await interaction.response.send_message("👂 这个只有管理员才能用哦～鹅也没办法呀", ephemeral=True)
+        return
+    
+    expire_dt = parse_expire_time(到期时间)
+    if not expire_dt:
+        await interaction.response.send_message(
+            "👂 时间格式不对呀～\n"
+            "**时长格式：** `30m`、`2h`、`7d`、`1d12h`\n"
+            "**日期格式：** `2025-03-01 12:00` 或 `2025-03-01`",
+            ephemeral=True
+        )
+        return
+    
+    if expire_dt <= datetime.now():
+        await interaction.response.send_message("👂 到期时间不能是过去的呀～", ephemeral=True)
+        return
+    
+    await interaction.response.defer(ephemeral=True)
+    
+    try:
+        await 成员.add_roles(身份组, reason=f"临时身份组，由 {interaction.user.name} 发放")
+    except Exception as e:
+        await interaction.followup.send(f"👂 添加身份组失败了：{str(e)}\n可能是鹅的权限不够呀", ephemeral=True)
+        return
+    
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    try:
+        c.execute(
+            "INSERT OR REPLACE INTO temp_roles (guild_id, user_id, role_id, granted_by, granted_at, expire_at, status) VALUES (?, ?, ?, ?, ?, ?, 'active')",
+            (interaction.guild_id, 成员.id, 身份组.id, interaction.user.id, datetime.now().isoformat(), expire_dt.isoformat())
+        )
+        temp_role_id = c.lastrowid
+        conn.commit()
+    except Exception as e:
+        conn.close()
+        await interaction.followup.send(f"👂 记录失败了：{str(e)}", ephemeral=True)
+        return
+    conn.close()
+    
+    delay = (expire_dt - datetime.now()).total_seconds()
+    asyncio.create_task(_temp_role_timer(bot, temp_role_id, delay))
+    
+    unix_ts = int(expire_dt.timestamp())
+    await interaction.followup.send(
+        f"👂 搞定啦！\n"
+        f"👤 成员：{成员.mention}\n"
+        f"🏷️ 身份组：**{身份组.name}**\n"
+        f"⏰ 到期时间：<t:{unix_ts}:F>（<t:{unix_ts}:R>）\n\n"
+        f"到期后会自动移除并私信通知哦～",
+        ephemeral=True
+    )
+
+
+@bot.tree.command(name="临时身份组列表", description="【管理员】查看当前所有临时身份组，可手动提前移除")
+async def list_temp_roles(interaction: discord.Interaction):
+    if not is_admin(interaction):
+        await interaction.response.send_message("👂 这个只有管理员才能用哦～鹅也没办法呀", ephemeral=True)
+        return
+    
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute(
+        "SELECT id, user_id, role_id, expire_at, granted_by FROM temp_roles WHERE guild_id = ? AND status = 'active' ORDER BY expire_at ASC",
+        (interaction.guild_id,)
+    )
+    entries = c.fetchall()
+    conn.close()
+    
+    if not entries:
+        await interaction.response.send_message("👂 目前没有临时身份组哦～", ephemeral=True)
+        return
+    
+    await interaction.response.defer(ephemeral=True)
+    guild = interaction.guild
+    
+    embed = discord.Embed(title="⏰ 当前临时身份组列表", color=0xffaa00)
+    select_options = []
+    
+    for tr_id, user_id, role_id, expire_at, granted_by in entries:
+        role = guild.get_role(role_id)
+        role_name = role.name if role else f"未知({role_id})"
+        try:
+            expire_dt = datetime.fromisoformat(expire_at)
+            unix_ts = int(expire_dt.timestamp())
+            time_str = f"<t:{unix_ts}:R>"
+        except Exception:
+            time_str = expire_at
+        
+        embed.add_field(
+            name=f"#{tr_id}",
+            value=f"👤 <@{user_id}> | 🏷️ **{role_name}** | ⏰ {time_str}",
+            inline=False
+        )
+        if len(select_options) < 25:
+            select_options.append(
+                discord.SelectOption(
+                    label=f"#{tr_id} - {role_name}",
+                    description=f"用户ID: {user_id}",
+                    value=str(tr_id)
+                )
+            )
+    
+    class TempRoleRemoveView(discord.ui.View):
+        def __init__(self):
+            super().__init__(timeout=60)
+            self.select = discord.ui.Select(
+                placeholder="👂 选择要提前移除的...",
+                options=select_options,
+                min_values=1,
+                max_values=min(len(select_options), 10),
+            )
+            self.select.callback = self.remove_selected
+            self.add_item(self.select)
+        
+        async def remove_selected(self, select_interaction: discord.Interaction):
+            await select_interaction.response.defer(ephemeral=True)
+            removed = []
+            failed = []
+            for tr_id_str in self.select.values:
+                tr_id = int(tr_id_str)
+                try:
+                    conn = sqlite3.connect(DB_PATH)
+                    c = conn.cursor()
+                    c.execute("SELECT user_id, role_id FROM temp_roles WHERE id = ? AND status = 'active'", (tr_id,))
+                    result = c.fetchone()
+                    if not result:
+                        conn.close()
+                        continue
+                    user_id, role_id = result
+                    c.execute("UPDATE temp_roles SET status = 'manually_removed' WHERE id = ?", (tr_id,))
+                    conn.commit()
+                    conn.close()
+                    member = guild.get_member(user_id)
+                    if not member:
+                        try:
+                            member = await guild.fetch_member(user_id)
+                        except Exception:
+                            member = None
+                    role = guild.get_role(role_id)
+                    if member and role and role in member.roles:
+                        await member.remove_roles(role, reason="管理员手动提前移除临时身份组")
+                    role_name = role.name if role else f"ID:{role_id}"
+                    removed.append(f"#{tr_id} {role_name}")
+                except Exception:
+                    failed.append(f"#{tr_id}")
+            lines = []
+            if removed:
+                lines.append(f"👂 已移除：{'、'.join(removed)}")
+            if failed:
+                lines.append(f"⚠️ 移除失败：{'、'.join(failed)}")
+            await select_interaction.followup.send("\n".join(lines) if lines else "👂 没有变化", ephemeral=True)
+    
+    await interaction.followup.send(embed=embed, view=TempRoleRemoveView(), ephemeral=True)
+
 
 # ============ 管理员：批量删除消息 ============
 @bot.tree.command(name="批量删除", description="【管理员】删除当前频道指定范围的消息")
