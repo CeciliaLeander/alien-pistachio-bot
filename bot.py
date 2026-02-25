@@ -2110,7 +2110,7 @@ async def list_temp_roles(interaction: discord.Interaction):
     
     class TempRoleRemoveView(discord.ui.View):
         def __init__(self):
-            super().__init__(timeout=60)
+            super().__init__(timeout=180)
             self.select = discord.ui.Select(
                 placeholder="👂 选择要提前移除的...",
                 options=select_options,
