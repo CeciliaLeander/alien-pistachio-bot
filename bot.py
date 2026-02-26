@@ -32,7 +32,7 @@ FILES_DIR = os.path.join(DATA_DIR, "files")
 DB_PATH = os.path.join(DATA_DIR, "bot.db")
 
 # 管理员身份组名称（拥有此身份组的人才能上传/验证）
-ADMIN_ROLE_NAME = "开心果bot"
+ADMIN_ROLE_NAMES = ["开心果bot", "见习开心果bot"]
 
 # ============ 匿名区配置 ============
 # 冰雪甜品元素昵称池
@@ -205,7 +205,7 @@ def generate_tracking_code():
 
 def is_admin(interaction: discord.Interaction) -> bool:
     """检查用户是否为管理员"""
-    return any(role.name == ADMIN_ROLE_NAME for role in interaction.user.roles)
+    return any(role.name in ADMIN_ROLE_NAMES for role in interaction.user.roles)
 
 # --- 图片隐写水印（LSB） ---
 
@@ -679,7 +679,7 @@ async def scroll_to_top(interaction: discord.Interaction):
 # ============ 管理员：bot代发公告 ============
 @bot.command(name="公告")
 async def post_announcement(ctx):
-    if not any(role.name == ADMIN_ROLE_NAME for role in ctx.author.roles):
+    if not any(role.name in ADMIN_ROLE_NAMES for role in ctx.author.roles):
         await ctx.send("👂 这个只有管理员才能用哦～鹅也没办法呀")
         return
 
@@ -1669,7 +1669,7 @@ async def send_subscribe_panel(interaction: discord.Interaction):
         if not r.is_default()
         and not r.is_bot_managed()
         and not r.is_integration()
-        and r.name != ADMIN_ROLE_NAME
+        and r.name not in ADMIN_ROLE_NAMES
         and not r.permissions.administrator
     ]
     
