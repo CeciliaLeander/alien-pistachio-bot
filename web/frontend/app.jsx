@@ -140,6 +140,7 @@ const NAV_ITEMS = [
   { path: "/lottery", icon: "🎰", label: "抽奖" },
   { path: "/roles",   icon: "🏷️", label: "身份组" },
   { path: "/tools",   icon: "🔧", label: "工具" },
+  { path: "/config",  icon: "⚙️", label: "设置" },
   { path: "/faq",     icon: "❓", label: "FAQ" },
 ];
 
@@ -301,6 +302,7 @@ function AppLayout({ user, onLogout }) {
   else if (route.startsWith("/lottery"))  page = <LotteryPage />;
   else if (route.startsWith("/roles"))    page = <RolesPage />;
   else if (route.startsWith("/tools"))    page = <ToolsPage />;
+  else if (route.startsWith("/config"))   page = <ConfigPage />;
   else if (route.startsWith("/faq"))      page = <FaqPage />;
   else page = <DashboardPage />;
 
