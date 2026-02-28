@@ -184,6 +184,17 @@ def init_db():
         UNIQUE(guild_id, user_id, role_id)
     )''')
 
+    # ========== Web 管理面板任务队列表 ==========
+    c.execute('''CREATE TABLE IF NOT EXISTS web_tasks (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        task_type TEXT NOT NULL,
+        payload TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pending',
+        result TEXT,
+        created_at TEXT NOT NULL,
+        completed_at TEXT
+    )''')
+
     conn.commit()
     conn.close()
 
@@ -585,6 +596,10 @@ async def on_ready():
             print(f"[临时身份组恢复] 恢复 #{tr_id} 失败：{e}")
     if temp_entries:
         print(f"[临时身份组恢复] 已恢复 {len(temp_entries)} 个临时身份组")
+
+    # ========== 启动 Web 任务队列处理 ==========
+    if not process_web_tasks.is_running():
+        process_web_tasks.start()
 
     print(f"👂 小鹅子上线了：{bot.user}")
     print(f"👂 已连接雪山：{[g.name for g in bot.guilds]}")
@@ -2297,6 +2312,176 @@ async def bulk_delete(
         result_parts.append(f"（其中 {len(old)} 条是超过14天的旧消息，逐条删除的，比较慢请见谅）")
 
     await interaction.followup.send("\n".join(result_parts), ephemeral=True)
+
+# ============ Web 管理面板任务队列处理 ============
+
+@tasks.loop(seconds=2)
+async def process_web_tasks():
+    """每2秒检查 web_tasks 表，执行 pending 任务"""
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    rows = conn.execute(
+        "SELECT id, task_type, payload FROM web_tasks WHERE status = 'pending' ORDER BY id ASC LIMIT 5"
+    ).fetchall()
+    if not rows:
+        conn.close()
+        return
+
+    for row in rows:
+        task_id = row["id"]
+        task_type = row["task_type"]
+        try:
+            payload = json.loads(row["payload"])
+        except (json.JSONDecodeError, TypeError):
+            payload = {}
+
+        # 标记为 processing
+        conn.execute("UPDATE web_tasks SET status = 'processing' WHERE id = ?", (task_id,))
+        conn.commit()
+
+        result_data = {}
+        try:
+            if task_type == "draw_lottery":
+                lottery_id = payload.get("lottery_id")
+                winners = await do_lottery_draw(bot, lottery_id)
+                if winners is None:
+                    result_data = {"error": "抽奖不存在或已结束"}
+                else:
+                    result_data = {"winners": winners, "count": len(winners)}
+
+            elif task_type == "cancel_lottery":
+                lottery_id = payload.get("lottery_id")
+                c = conn.cursor()
+                c.execute("SELECT status, title, channel_id, message_id FROM lotteries WHERE id = ?", (lottery_id,))
+                lottery = c.fetchone()
+                if not lottery:
+                    result_data = {"error": "抽奖不存在"}
+                elif lottery["status"] != "active":
+                    result_data = {"error": f"抽奖状态为 {lottery['status']}，无法取消"}
+                else:
+                    c.execute("UPDATE lotteries SET status = 'cancelled', ended_at = ? WHERE id = ?",
+                              (datetime.now().isoformat(), lottery_id))
+                    conn.commit()
+                    # 更新 Discord 消息
+                    if lottery["message_id"]:
+                        try:
+                            channel = bot.get_channel(lottery["channel_id"])
+                            if channel:
+                                msg = await channel.fetch_message(lottery["message_id"])
+                                cancel_embed = discord.Embed(
+                                    title=f"❌ {lottery['title']}（已取消）",
+                                    description="这个抽奖已被管理员取消了～",
+                                    color=0xff4444,
+                                )
+                                await msg.edit(embed=cancel_embed, view=None)
+                        except Exception:
+                            pass
+                    result_data = {"ok": True, "title": lottery["title"]}
+
+            elif task_type == "remove_temp_role":
+                temp_role_id = payload.get("temp_role_id")
+                await _remove_temp_role(bot, temp_role_id)
+                result_data = {"ok": True}
+
+            elif task_type == "grant_temp_role":
+                guild_id = payload.get("guild_id", GUILD_ID)
+                user_id = payload.get("user_id")
+                role_id = payload.get("role_id")
+                expire_at = payload.get("expire_at")  # ISO 格式
+                guild = bot.get_guild(guild_id)
+                if not guild:
+                    result_data = {"error": "找不到服务器"}
+                else:
+                    member = guild.get_member(user_id)
+                    if not member:
+                        try:
+                            member = await guild.fetch_member(user_id)
+                        except Exception:
+                            member = None
+                    if not member:
+                        result_data = {"error": "找不到用户"}
+                    else:
+                        role = guild.get_role(role_id)
+                        if not role:
+                            result_data = {"error": "找不到身份组"}
+                        else:
+                            await member.add_roles(role, reason="管理面板发放临时身份组")
+                            expire_dt = datetime.fromisoformat(expire_at)
+                            c = conn.cursor()
+                            c.execute(
+                                "INSERT OR REPLACE INTO temp_roles (guild_id, user_id, role_id, granted_by, granted_at, expire_at, status) "
+                                "VALUES (?, ?, ?, 0, ?, ?, 'active')",
+                                (guild_id, user_id, role_id, datetime.now().isoformat(), expire_dt.isoformat()),
+                            )
+                            tr_id = c.lastrowid
+                            conn.commit()
+                            delay = (expire_dt - datetime.now()).total_seconds()
+                            if delay > 0:
+                                asyncio.create_task(_temp_role_timer(bot, tr_id, delay))
+                            result_data = {"ok": True, "temp_role_id": tr_id}
+
+            elif task_type == "bulk_delete":
+                channel_id = payload.get("channel_id")
+                message_ids = payload.get("message_ids", [])
+                channel = bot.get_channel(channel_id)
+                if not channel:
+                    result_data = {"error": "找不到频道"}
+                else:
+                    deleted = 0
+                    for mid in message_ids:
+                        try:
+                            msg = await channel.fetch_message(mid)
+                            await msg.delete()
+                            deleted += 1
+                            await asyncio.sleep(0.5)
+                        except Exception:
+                            pass
+                    result_data = {"ok": True, "deleted": deleted}
+
+            elif task_type == "send_announcement":
+                channel_id = payload.get("channel_id")
+                content = payload.get("content", "")
+                embed_data = payload.get("embed")
+                channel = bot.get_channel(channel_id)
+                if not channel:
+                    result_data = {"error": "找不到频道"}
+                else:
+                    embed = None
+                    if embed_data:
+                        embed = discord.Embed(
+                            title=embed_data.get("title", ""),
+                            description=embed_data.get("description", ""),
+                            color=embed_data.get("color", 0x88ccff),
+                        )
+                    sent = await channel.send(content=content or None, embed=embed)
+                    result_data = {"ok": True, "message_id": sent.id}
+
+            else:
+                result_data = {"error": f"未知任务类型: {task_type}"}
+
+            # 标记完成
+            conn.execute(
+                "UPDATE web_tasks SET status = 'done', result = ?, completed_at = ? WHERE id = ?",
+                (json.dumps(result_data, ensure_ascii=False), datetime.now().isoformat(), task_id),
+            )
+            conn.commit()
+
+        except Exception as e:
+            # 标记失败
+            conn.execute(
+                "UPDATE web_tasks SET status = 'failed', result = ?, completed_at = ? WHERE id = ?",
+                (json.dumps({"error": str(e)}, ensure_ascii=False), datetime.now().isoformat(), task_id),
+            )
+            conn.commit()
+            print(f"[Web任务] 任务 #{task_id} ({task_type}) 执行失败：{e}")
+
+    conn.close()
+
+
+@process_web_tasks.before_loop
+async def before_process_web_tasks():
+    await bot.wait_until_ready()
+
 
 # ============ 启动 Bot ============
 bot.run(BOT_TOKEN)
