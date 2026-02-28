@@ -2552,10 +2552,15 @@ async def process_web_tasks():
                     result_data = {"ok": True, "deleted": deleted}
 
             elif task_type == "send_announcement":
-                channel_id = payload.get("channel_id")
+                channel_id = int(payload.get("channel_id"))
                 content = payload.get("content", "")
                 embed_data = payload.get("embed")
                 channel = bot.get_channel(channel_id)
+                if not channel:
+                    try:
+                        channel = await bot.fetch_channel(channel_id)
+                    except Exception:
+                        channel = None
                 if not channel:
                     result_data = {"error": "找不到频道"}
                 else:
