@@ -88,7 +88,7 @@ function PlaceholderPage({ title, icon }) {
 }
 
 // FilesPage 已移至 pages/Files.jsx
-function AnonPage()    { return <PlaceholderPage title="匿名区管理" icon="🎭" />; }
+// AnonPage 已移至 pages/Anon.jsx
 function LotteryPage() { return <PlaceholderPage title="抽奖管理" icon="🎰" />; }
 function RolesPage()   { return <PlaceholderPage title="身份组管理" icon="🏷️" />; }
 function ToolsPage()   { return <PlaceholderPage title="工具" icon="🔧" />; }
