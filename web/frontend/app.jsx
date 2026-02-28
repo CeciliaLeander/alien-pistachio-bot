@@ -91,7 +91,7 @@ function PlaceholderPage({ title, icon }) {
 // AnonPage 已移至 pages/Anon.jsx
 // LotteryPage 已移至 pages/Lottery.jsx
 // RolesPage 已移至 pages/Roles.jsx
-function ToolsPage()   { return <PlaceholderPage title="工具" icon="🔧" />; }
+// ToolsPage 已移至 pages/Tools.jsx
 function FaqPage()     { return <PlaceholderPage title="使用说明" icon="❓" />; }
 
 // ============ 登录页 ============

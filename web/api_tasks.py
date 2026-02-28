@@ -84,3 +84,32 @@ def get_task(task_id):
         pass
 
     return jsonify(result)
+
+
+@tasks_bp.route("/recent")
+@require_admin
+def recent_tasks():
+    """查询最近的任务列表"""
+    limit = request.args.get("limit", 30, type=int)
+    limit = min(limit, 100)
+    conn = _db()
+    rows = conn.execute(
+        "SELECT * FROM web_tasks ORDER BY id DESC LIMIT ?", (limit,)
+    ).fetchall()
+    conn.close()
+
+    tasks = []
+    for row in rows:
+        t = dict(row)
+        try:
+            t["payload"] = json.loads(t["payload"])
+        except (json.JSONDecodeError, TypeError):
+            pass
+        try:
+            if t["result"]:
+                t["result"] = json.loads(t["result"])
+        except (json.JSONDecodeError, TypeError):
+            pass
+        tasks.append(t)
+
+    return jsonify({"tasks": tasks})
