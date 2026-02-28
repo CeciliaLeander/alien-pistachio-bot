@@ -1,6 +1,7 @@
 /* ============================================================
    文件管理页面
    左侧：帖子列表 | 右侧：文件列表 + 追踪记录 + 水印验证
+   风格：可爱冰雪甜品
    ============================================================ */
 
 function FilesPage() {
@@ -126,48 +127,58 @@ function FilesPage() {
   if (loading) {
     return (
       <div className="flex items-center justify-center py-20">
-        <div className="text-4xl animate-bounce">🐧</div>
+        <div className="text-center">
+          <div className="text-4xl mb-3 snowflake-spin">❄️</div>
+          <p className="text-text-mid text-sm">🐧 鹅在努力加载中...</p>
+        </div>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="bg-red-50 border border-red-200 rounded-xl p-6 text-center">
-        <p className="text-red-600 mb-3">{error}</p>
-        <button onClick={loadFiles} className="text-sm text-red-500 hover:text-red-700 underline">重试</button>
+      <div className="rounded-2xl p-6 text-center" style={{ background: 'var(--soft-pink)', borderLeft: '4px solid #ff6680' }}>
+        <p className="text-red-500 mb-3">❌ {error}</p>
+        <button onClick={loadFiles} className="text-sm text-deep-purple hover:underline">再看看</button>
       </div>
     );
   }
 
   return (
-    <div>
-      <h1 className="text-2xl font-bold text-gray-800 mb-6">文件管理</h1>
+    <div className="page-enter">
+      <h1 className="text-2xl font-bold text-text-dark mb-6 font-title">📁 鹅的小仓库</h1>
 
       <div className="flex gap-6" style={{ minHeight: "calc(100vh - 200px)" }}>
         {/* 左侧：帖子列表 */}
         <div className="w-64 shrink-0">
-          <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-            <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
-              <h2 className="font-semibold text-gray-700 text-sm">帖子列表</h2>
-              <span className="text-xs text-gray-400">{postNames.length} 个</span>
+          <div className="bg-white rounded-card border border-deep-purple/[0.06] overflow-hidden" style={{ boxShadow: '0 4px 20px rgba(107,92,231,0.08)' }}>
+            <div className="px-4 py-3 flex items-center justify-between" style={{ borderBottom: '1px solid rgba(107,92,231,0.06)' }}>
+              <h2 className="font-semibold text-text-dark text-sm">帖子列表</h2>
+              <span className="text-xs text-text-light">{postNames.length} 个</span>
             </div>
             <div className="max-h-96 overflow-y-auto">
               {postNames.length === 0 ? (
-                <div className="px-4 py-8 text-center text-gray-300 text-sm">暂无帖子</div>
+                <div className="px-4 py-8 text-center text-text-light text-sm">📭 🐧 仓库里空空的呀～</div>
               ) : (
                 postNames.map(name => (
                   <button
                     key={name}
                     onClick={() => handleSelectPost(name)}
-                    className={`w-full text-left px-4 py-3 text-sm border-b border-gray-50 transition-colors ${
+                    className={`w-full text-left px-4 py-3 text-sm transition-colors ${
                       selectedPost === name
-                        ? "bg-blue-50 text-blue-700 font-medium"
-                        : "text-gray-700 hover:bg-gray-50"
+                        ? "font-medium"
+                        : "text-text-dark"
                     }`}
+                    style={{
+                      borderBottom: '1px solid rgba(107,92,231,0.04)',
+                      background: selectedPost === name ? 'rgba(107,92,231,0.1)' : undefined,
+                      color: selectedPost === name ? 'var(--deep-purple)' : undefined,
+                    }}
+                    onMouseEnter={e => { if (selectedPost !== name) e.currentTarget.style.background = 'var(--lavender)'; }}
+                    onMouseLeave={e => { if (selectedPost !== name) e.currentTarget.style.background = ''; }}
                   >
                     <div className="truncate">{name}</div>
-                    <div className="text-xs text-gray-400 mt-0.5">{posts[name].length} 个文件</div>
+                    <div className="text-xs text-text-light mt-0.5">{posts[name].length} 个文件</div>
                   </button>
                 ))
               )}
@@ -190,26 +201,30 @@ function FilesPage() {
         {/* 右侧：文件列表 + 追踪记录 */}
         <div className="flex-1 min-w-0">
           {!selectedPost ? (
-            <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-12 text-center">
-              <div className="text-4xl mb-3">📂</div>
-              <p className="text-gray-400">选择左侧的帖子查看文件</p>
+            <div className="bg-white rounded-card border border-deep-purple/[0.06] p-12 text-center" style={{ boxShadow: '0 4px 20px rgba(107,92,231,0.08)' }}>
+              <div className="text-5xl mb-3">📂</div>
+              <p className="text-text-light">🐧 选择左侧的帖子查看文件呀～</p>
             </div>
           ) : (
             <div>
               {/* 帖子标题栏 */}
-              <div className="bg-white rounded-xl shadow-sm border border-gray-100 mb-4">
+              <div className="bg-white rounded-card border border-deep-purple/[0.06] mb-4" style={{ boxShadow: '0 4px 20px rgba(107,92,231,0.08)' }}>
                 <div className="px-5 py-4 flex items-center justify-between">
                   <div>
-                    <h2 className="text-lg font-semibold text-gray-800">{selectedPost}</h2>
-                    <p className="text-xs text-gray-400 mt-0.5">{currentFiles.length} 个文件</p>
+                    <h2 className="text-lg font-semibold text-text-dark">{selectedPost}</h2>
+                    <p className="text-xs text-text-light mt-0.5">{currentFiles.length} 个文件</p>
                   </div>
                   <button
                     onClick={handleToggleTracking}
-                    className={`text-sm px-4 py-2 rounded-lg transition-colors ${
+                    className={`text-sm px-4 py-2 rounded-btn transition-all font-medium ${
                       trackingOpen
-                        ? "bg-blue-100 text-blue-700"
-                        : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                        ? "text-white"
+                        : "text-text-mid"
                     }`}
+                    style={{
+                      background: trackingOpen ? 'var(--deep-purple)' : 'rgba(107,92,231,0.06)',
+                      color: trackingOpen ? 'white' : undefined,
+                    }}
                   >
                     {trackingOpen ? "隐藏追踪记录" : "查看追踪记录"}
                   </button>
@@ -217,37 +232,49 @@ function FilesPage() {
               </div>
 
               {/* 文件表格 */}
-              <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden mb-4">
+              <div className="bg-white rounded-2xl border border-deep-purple/[0.06] overflow-hidden mb-4" style={{ boxShadow: '0 4px 20px rgba(107,92,231,0.08)' }}>
                 <table className="w-full text-sm">
                   <thead>
-                    <tr className="border-b border-gray-100 bg-gray-50/50">
-                      <th className="text-left px-5 py-3 font-medium text-gray-500">文件名</th>
-                      <th className="text-left px-3 py-3 font-medium text-gray-500">版本</th>
-                      <th className="text-left px-3 py-3 font-medium text-gray-500">类型</th>
-                      <th className="text-left px-3 py-3 font-medium text-gray-500">上传时间</th>
-                      <th className="text-right px-5 py-3 font-medium text-gray-500">操作</th>
+                    <tr style={{ background: 'rgba(107,92,231,0.04)', borderBottom: '1px solid rgba(107,92,231,0.06)' }}>
+                      <th className="text-left px-5 py-3 font-semibold text-text-dark">文件名</th>
+                      <th className="text-left px-3 py-3 font-semibold text-text-dark">版本</th>
+                      <th className="text-left px-3 py-3 font-semibold text-text-dark">类型</th>
+                      <th className="text-left px-3 py-3 font-semibold text-text-dark">上传时间</th>
+                      <th className="text-right px-5 py-3 font-semibold text-text-dark">操作</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-gray-50">
-                    {currentFiles.map(f => (
-                      <tr key={f.id} className="hover:bg-gray-50 transition-colors">
+                  <tbody>
+                    {currentFiles.map((f, idx) => (
+                      <tr
+                        key={f.id}
+                        className="transition-colors"
+                        style={{
+                          background: idx % 2 === 0 ? 'var(--snow-white)' : 'white',
+                          borderBottom: '1px solid rgba(107,92,231,0.06)',
+                        }}
+                        onMouseEnter={e => e.currentTarget.style.background = 'var(--lavender)'}
+                        onMouseLeave={e => e.currentTarget.style.background = idx % 2 === 0 ? 'var(--snow-white)' : 'white'}
+                      >
                         <td className="px-5 py-3">
                           <div className="flex items-center gap-2">
                             <FileIcon type={f.file_type} />
-                            <span className="text-gray-800 truncate max-w-xs">{f.file_name}</span>
+                            <span className="text-text-dark truncate max-w-xs">{f.file_name}</span>
                           </div>
                         </td>
                         <td className="px-3 py-3">
-                          <span className="bg-gray-100 text-gray-600 px-2 py-0.5 rounded text-xs">{f.version}</span>
+                          <span className="bg-deep-purple/[0.08] text-deep-purple px-2 py-0.5 rounded-lg text-xs">{f.version}</span>
                         </td>
-                        <td className="px-3 py-3 text-gray-500">{f.file_type}</td>
-                        <td className="px-3 py-3 text-gray-400 text-xs">{formatTime(f.uploaded_at)}</td>
+                        <td className="px-3 py-3 text-text-mid">{f.file_type}</td>
+                        <td className="px-3 py-3 text-text-light text-xs">{formatTime(f.uploaded_at)}</td>
                         <td className="px-5 py-3 text-right">
                           <button
                             onClick={() => setDeleteTarget(f)}
-                            className="text-red-400 hover:text-red-600 text-xs transition-colors"
+                            className="text-xs font-medium px-3 py-1 rounded-btn transition-colors"
+                            style={{ color: '#ff4466' }}
+                            onMouseEnter={e => { e.currentTarget.style.background = 'var(--soft-pink)'; }}
+                            onMouseLeave={e => { e.currentTarget.style.background = ''; }}
                           >
-                            删除
+                            扔掉
                           </button>
                         </td>
                       </tr>
@@ -255,7 +282,7 @@ function FilesPage() {
                   </tbody>
                 </table>
                 {currentFiles.length === 0 && (
-                  <div className="px-5 py-8 text-center text-gray-300 text-sm">此帖子下暂无文件</div>
+                  <div className="px-5 py-8 text-center text-text-light text-sm">📭 🐧 仓库里空空的呀～</div>
                 )}
               </div>
 
@@ -271,9 +298,9 @@ function FilesPage() {
       {/* 删除确认弹窗 */}
       {deleteTarget && (
         <ConfirmModal
-          title="确认删除"
-          message={`确定要删除文件「${deleteTarget.file_name}」(${deleteTarget.version}) 吗？此操作不可撤销。`}
-          confirmText={deleting ? "删除中..." : "确认删除"}
+          title="确认扔掉"
+          message={`🐧 确定要扔掉吗？鹅会心疼的…\n文件「${deleteTarget.file_name}」(${deleteTarget.version}) 将被永久删除。`}
+          confirmText={deleting ? "扔掉中..." : "扔掉"}
           confirmDisabled={deleting}
           onConfirm={handleDelete}
           onCancel={() => setDeleteTarget(null)}
@@ -301,39 +328,48 @@ function FileIcon({ type }) {
 function TrackingPanel({ records, postName }) {
   if (records.length === 0) {
     return (
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-8 text-center text-gray-300 text-sm">
-        帖子「{postName}」暂无追踪记录
+      <div className="bg-white rounded-card border border-deep-purple/[0.06] p-8 text-center text-text-light text-sm" style={{ boxShadow: '0 4px 20px rgba(107,92,231,0.08)' }}>
+        🐧 帖子「{postName}」暂无追踪记录呢
       </div>
     );
   }
 
   return (
-    <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-      <div className="px-5 py-3 border-b border-gray-100">
-        <h3 className="font-semibold text-gray-700 text-sm">追踪记录 ({records.length})</h3>
+    <div className="bg-white rounded-2xl border border-deep-purple/[0.06] overflow-hidden" style={{ boxShadow: '0 4px 20px rgba(107,92,231,0.08)' }}>
+      <div className="px-5 py-3" style={{ borderBottom: '1px solid rgba(107,92,231,0.06)' }}>
+        <h3 className="font-semibold text-text-dark text-sm">追踪记录 ({records.length})</h3>
       </div>
       <table className="w-full text-sm">
         <thead>
-          <tr className="border-b border-gray-100 bg-gray-50/50">
-            <th className="text-left px-5 py-2.5 font-medium text-gray-500">追踪码</th>
-            <th className="text-left px-3 py-2.5 font-medium text-gray-500">用户</th>
-            <th className="text-left px-3 py-2.5 font-medium text-gray-500">文件</th>
-            <th className="text-left px-3 py-2.5 font-medium text-gray-500">版本</th>
-            <th className="text-left px-3 py-2.5 font-medium text-gray-500">获取时间</th>
+          <tr style={{ background: 'rgba(107,92,231,0.04)', borderBottom: '1px solid rgba(107,92,231,0.06)' }}>
+            <th className="text-left px-5 py-2.5 font-semibold text-text-dark">追踪码</th>
+            <th className="text-left px-3 py-2.5 font-semibold text-text-dark">用户</th>
+            <th className="text-left px-3 py-2.5 font-semibold text-text-dark">文件</th>
+            <th className="text-left px-3 py-2.5 font-semibold text-text-dark">版本</th>
+            <th className="text-left px-3 py-2.5 font-semibold text-text-dark">获取时间</th>
           </tr>
         </thead>
-        <tbody className="divide-y divide-gray-50">
+        <tbody>
           {records.map((r, i) => (
-            <tr key={i} className="hover:bg-gray-50 transition-colors">
+            <tr
+              key={i}
+              className="transition-colors"
+              style={{
+                background: i % 2 === 0 ? 'var(--snow-white)' : 'white',
+                borderBottom: '1px solid rgba(107,92,231,0.06)',
+              }}
+              onMouseEnter={e => e.currentTarget.style.background = 'var(--lavender)'}
+              onMouseLeave={e => e.currentTarget.style.background = i % 2 === 0 ? 'var(--snow-white)' : 'white'}
+            >
               <td className="px-5 py-2.5">
-                <code className="bg-gray-100 text-gray-700 px-1.5 py-0.5 rounded text-xs font-mono">{r.tracking_code}</code>
+                <code className="bg-deep-purple/[0.08] text-deep-purple px-1.5 py-0.5 rounded-lg text-xs font-mono">{r.tracking_code}</code>
               </td>
-              <td className="px-3 py-2.5 text-gray-700">{r.user_name}</td>
-              <td className="px-3 py-2.5 text-gray-500 truncate max-w-[200px]">{r.file_name}</td>
+              <td className="px-3 py-2.5 text-text-dark">{r.user_name}</td>
+              <td className="px-3 py-2.5 text-text-mid truncate max-w-[200px]">{r.file_name}</td>
               <td className="px-3 py-2.5">
-                <span className="bg-gray-100 text-gray-600 px-2 py-0.5 rounded text-xs">{r.version}</span>
+                <span className="bg-deep-purple/[0.08] text-deep-purple px-2 py-0.5 rounded-lg text-xs">{r.version}</span>
               </td>
-              <td className="px-3 py-2.5 text-gray-400 text-xs">{formatTime(r.retrieved_at)}</td>
+              <td className="px-3 py-2.5 text-text-light text-xs">{formatTime(r.retrieved_at)}</td>
             </tr>
           ))}
         </tbody>
@@ -346,9 +382,9 @@ function WatermarkVerifier({ dragOver, setDragOver, onDrop, onFileInput, verifyi
   const fileInputRef = React.useRef(null);
 
   return (
-    <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-      <div className="px-4 py-3 border-b border-gray-100">
-        <h2 className="font-semibold text-gray-700 text-sm">水印验证</h2>
+    <div className="bg-white rounded-card border border-deep-purple/[0.06] overflow-hidden" style={{ boxShadow: '0 4px 20px rgba(107,92,231,0.08)' }}>
+      <div className="px-4 py-3" style={{ borderBottom: '1px solid rgba(107,92,231,0.06)' }}>
+        <h2 className="font-semibold text-text-dark text-sm">🔍 闻一闻水印</h2>
       </div>
       <div className="p-4">
         {/* 拖拽区 */}
@@ -357,22 +393,24 @@ function WatermarkVerifier({ dragOver, setDragOver, onDrop, onFileInput, verifyi
           onDragLeave={() => setDragOver(false)}
           onDrop={onDrop}
           onClick={() => fileInputRef.current?.click()}
-          className={`border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition-colors ${
-            dragOver
-              ? "border-blue-400 bg-blue-50"
-              : "border-gray-200 hover:border-gray-300 hover:bg-gray-50"
-          }`}
+          className="border-2 border-dashed rounded-2xl p-6 text-center cursor-pointer transition-all"
+          style={{
+            borderColor: dragOver ? 'var(--deep-purple)' : 'rgba(107,92,231,0.15)',
+            background: dragOver ? 'var(--lavender)' : undefined,
+          }}
+          onMouseEnter={e => { if (!dragOver) { e.currentTarget.style.borderColor = 'var(--soft-purple)'; e.currentTarget.style.background = 'var(--snow-white)'; } }}
+          onMouseLeave={e => { if (!dragOver) { e.currentTarget.style.borderColor = 'rgba(107,92,231,0.15)'; e.currentTarget.style.background = ''; } }}
         >
           {verifying ? (
             <div>
-              <div className="text-2xl animate-spin mb-2">🔍</div>
-              <p className="text-sm text-gray-500">验证中...</p>
+              <div className="text-2xl mb-2 snowflake-spin">❄️</div>
+              <p className="text-sm text-text-mid">🐧 鹅在努力嗅探中...</p>
             </div>
           ) : (
             <div>
               <div className="text-2xl mb-2">📎</div>
-              <p className="text-xs text-gray-500">拖拽或点击上传</p>
-              <p className="text-xs text-gray-400 mt-1">PNG / JPG / JSON</p>
+              <p className="text-xs text-text-mid">拖拽或点击上传呀～</p>
+              <p className="text-xs text-text-light mt-1">PNG / JPG / JSON</p>
             </div>
           )}
           <input
@@ -388,14 +426,14 @@ function WatermarkVerifier({ dragOver, setDragOver, onDrop, onFileInput, verifyi
         {verifyResult && (
           <div className="mt-3">
             {verifyResult.error ? (
-              <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-600">
-                {verifyResult.error}
+              <div className="rounded-2xl p-3 text-sm" style={{ background: 'var(--soft-pink)', borderLeft: '4px solid #ff6680' }}>
+                ❌ {verifyResult.error}
               </div>
             ) : verifyResult.found ? (
-              <div className="bg-green-50 border border-green-200 rounded-lg p-3 text-sm space-y-1">
-                <p className="font-medium text-green-700">找到水印</p>
+              <div className="rounded-2xl p-3 text-sm space-y-1" style={{ background: 'var(--mint-green)', borderLeft: '4px solid #66cc99' }}>
+                <p className="font-medium text-green-700">✅ 🐧 鹅找到啦！这个文件是 {verifyResult.user_name} 拿的！</p>
                 <p className="text-green-600">
-                  追踪码：<code className="font-mono bg-green-100 px-1 rounded">{verifyResult.tracking_code}</code>
+                  追踪码：<code className="font-mono px-1 rounded-lg" style={{ background: 'rgba(102,204,153,0.2)' }}>{verifyResult.tracking_code}</code>
                 </p>
                 <p className="text-green-600">用户：{verifyResult.user_name} ({verifyResult.user_id})</p>
                 <p className="text-green-600">帖子：{verifyResult.post_name}</p>
@@ -403,14 +441,14 @@ function WatermarkVerifier({ dragOver, setDragOver, onDrop, onFileInput, verifyi
                 <p className="text-green-600 text-xs">获取时间：{verifyResult.retrieved_at}</p>
               </div>
             ) : (
-              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 text-sm text-yellow-700">
+              <div className="rounded-2xl p-3 text-sm" style={{ background: 'var(--warm-peach)', borderLeft: '4px solid #ffb366' }}>
                 {verifyResult.tracking_code ? (
                   <div>
-                    <p>追踪码：<code className="font-mono bg-yellow-100 px-1 rounded">{verifyResult.tracking_code}</code></p>
-                    <p className="mt-1">{verifyResult.message}</p>
+                    <p>追踪码：<code className="font-mono px-1 rounded-lg" style={{ background: 'rgba(255,179,102,0.2)' }}>{verifyResult.tracking_code}</code></p>
+                    <p className="mt-1">⚠️ {verifyResult.message}</p>
                   </div>
                 ) : (
-                  <p>{verifyResult.message || "未检测到水印"}</p>
+                  <p>🐧 鹅闻了闻…没有闻到水印的味道呢</p>
                 )}
               </div>
             )}
@@ -424,21 +462,31 @@ function WatermarkVerifier({ dragOver, setDragOver, onDrop, onFileInput, verifyi
 function ConfirmModal({ title, message, confirmText, confirmDisabled, onConfirm, onCancel }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
-      <div className="absolute inset-0 bg-black/30" onClick={onCancel}></div>
-      <div className="relative bg-white rounded-xl shadow-xl p-6 max-w-sm w-full mx-4">
-        <h3 className="text-lg font-semibold text-gray-800 mb-2">{title}</h3>
-        <p className="text-sm text-gray-600 mb-6">{message}</p>
+      <div
+        className="absolute inset-0"
+        style={{ background: 'rgba(58,51,85,0.4)', backdropFilter: 'blur(4px)' }}
+        onClick={onCancel}
+      ></div>
+      <div className="relative bg-white rounded-modal p-6 max-w-sm w-full mx-4" style={{ boxShadow: '0 20px 60px rgba(0,0,0,0.15)' }}>
+        <h3 className="text-lg font-semibold text-text-dark mb-2 font-title">{title}</h3>
+        <p className="text-sm text-text-mid mb-6 whitespace-pre-line">{message}</p>
         <div className="flex justify-end gap-3">
           <button
             onClick={onCancel}
-            className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+            className="px-4 py-2 text-sm font-medium rounded-btn transition-all border"
+            style={{ color: 'var(--deep-purple)', borderColor: 'var(--deep-purple)' }}
+            onMouseEnter={e => e.currentTarget.style.background = 'rgba(107,92,231,0.06)'}
+            onMouseLeave={e => e.currentTarget.style.background = ''}
           >
-            取消
+            算了算了
           </button>
           <button
             onClick={onConfirm}
             disabled={confirmDisabled}
-            className="px-4 py-2 text-sm bg-red-500 hover:bg-red-600 text-white rounded-lg transition-colors disabled:opacity-50"
+            className="px-4 py-2 text-sm text-white font-medium rounded-btn transition-all disabled:opacity-50"
+            style={{ background: '#ff4466' }}
+            onMouseEnter={e => { if (!confirmDisabled) e.currentTarget.style.background = '#ff2244'; }}
+            onMouseLeave={e => e.currentTarget.style.background = '#ff4466'}
           >
             {confirmText}
           </button>

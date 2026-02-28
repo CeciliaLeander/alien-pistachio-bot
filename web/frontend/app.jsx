@@ -1,6 +1,7 @@
 /* ============================================================
    小鹅子 Bot 管理面板 - React SPA
    技术栈：React 18 (CDN) + Hash Router (手写) + Tailwind CSS
+   风格：可爱冰雪甜品
    ============================================================ */
 
 const { useState, useEffect, useCallback, createContext, useContext } = React;
@@ -78,9 +79,9 @@ function Link({ to, children, className, activeClass, currentRoute }) {
 
 function PlaceholderPage({ title, icon }) {
   return (
-    <div>
-      <h1 className="text-2xl font-bold text-gray-800 mb-4">{icon} {title}</h1>
-      <div className="bg-white rounded-xl p-8 shadow-sm border border-gray-100 text-center text-gray-400">
+    <div className="page-enter">
+      <h1 className="text-2xl font-bold text-text-dark mb-4 font-title">{icon} {title}</h1>
+      <div className="bg-white rounded-card p-8 shadow-sm border border-deep-purple/[0.06] text-center text-text-light">
         此页面将在后续步骤中实现
       </div>
     </div>
@@ -92,25 +93,38 @@ function PlaceholderPage({ title, icon }) {
 // LotteryPage 已移至 pages/Lottery.jsx
 // RolesPage 已移至 pages/Roles.jsx
 // ToolsPage 已移至 pages/Tools.jsx
-function FaqPage()     { return <PlaceholderPage title="使用说明" icon="❓" />; }
+
+function FaqPage() {
+  return (
+    <div className="page-enter">
+      <h1 className="text-2xl font-bold text-text-dark mb-2 font-title">❓ 常见问题</h1>
+      <p className="text-text-mid text-sm mb-6">遇到问题先来这里找找看～</p>
+      <div className="bg-white rounded-card p-12 shadow-sm border border-deep-purple/[0.06] text-center">
+        <div className="text-6xl mb-4">📖</div>
+        <p className="text-text-light">🐧 鹅正在整理常见问题中...</p>
+      </div>
+    </div>
+  );
+}
 
 // ============ 登录页 ============
 
 function LoginPage() {
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-indigo-50 to-blue-100">
-      <div className="bg-white rounded-2xl shadow-lg p-10 max-w-sm w-full text-center">
-        <div className="text-6xl mb-4">🐧</div>
-        <h1 className="text-2xl font-bold text-gray-800 mb-2">小鹅子管理面板</h1>
-        <p className="text-gray-500 mb-8 text-sm">仅限拥有管理员身份组的成员登录</p>
+    <div className="min-h-screen flex items-center justify-center" style={{ background: 'linear-gradient(135deg, var(--snow-white), var(--lavender), var(--ice-blue))' }}>
+      <div className="bg-white rounded-modal shadow-lg p-10 max-w-sm w-full text-center border border-deep-purple/[0.06]" style={{ boxShadow: '0 20px 60px rgba(107,92,231,0.12)' }}>
+        <div className="text-6xl mb-4 penguin-bounce">🐧</div>
+        <h1 className="text-2xl font-bold text-text-dark mb-2 font-title">🐧 小鹅子管理手册</h1>
+        <p className="text-text-mid mb-8 text-sm">鹅虽然没有大脑，但是会努力当好管家的！</p>
         <a
           href="/api/auth/login"
-          className="inline-flex items-center gap-2 bg-discord hover:bg-indigo-600 text-white font-medium px-6 py-3 rounded-lg transition-colors"
+          className="inline-flex items-center gap-2 text-white font-semibold px-6 py-3 rounded-btn transition-all hover:-translate-y-0.5"
+          style={{ background: 'var(--deep-purple)', boxShadow: '0 4px 16px rgba(107,92,231,0.3)' }}
         >
           <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
             <path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028c.462-.63.874-1.295 1.226-1.994a.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03z"/>
           </svg>
-          Discord 登录
+          🐧 用 Discord 登录
         </a>
       </div>
     </div>
@@ -120,25 +134,28 @@ function LoginPage() {
 // ============ Sidebar ============
 
 const NAV_ITEMS = [
-  { path: "/",        icon: "📊", label: "仪表盘" },
+  { path: "/",        icon: "🏠", label: "首页" },
   { path: "/files",   icon: "📁", label: "文件管理" },
   { path: "/anon",    icon: "🎭", label: "匿名区" },
-  { path: "/lottery", icon: "🎰", label: "抽奖管理" },
+  { path: "/lottery", icon: "🎰", label: "抽奖" },
   { path: "/roles",   icon: "🏷️", label: "身份组" },
   { path: "/tools",   icon: "🔧", label: "工具" },
-  { path: "/faq",     icon: "❓", label: "使用说明" },
+  { path: "/faq",     icon: "❓", label: "FAQ" },
 ];
 
-function Sidebar({ currentRoute }) {
+function Sidebar({ currentRoute, isMobile, onClose }) {
   return (
-    <aside className="w-60 bg-sidebar min-h-screen flex flex-col shrink-0">
+    <aside className={`w-60 bg-white min-h-screen flex flex-col shrink-0 ${isMobile ? '' : 'border-r'}`} style={{ borderColor: 'rgba(107,92,231,0.08)' }}>
       {/* Logo */}
-      <div className="flex items-center gap-3 px-5 py-5 border-b border-white/10">
-        <span className="text-3xl">🐧</span>
+      <div className="flex items-center gap-3 px-5 py-5 border-b" style={{ borderColor: 'rgba(107,92,231,0.08)' }}>
+        <span className="text-3xl penguin-bounce">🐧</span>
         <div>
-          <div className="text-white font-bold text-sm">小鹅子 Bot</div>
-          <div className="text-gray-400 text-xs">管理面板</div>
+          <div className="font-bold text-sm font-title" style={{ color: 'var(--deep-purple)' }}>小鹅子</div>
+          <div className="text-text-light text-xs">管理面板</div>
         </div>
+        {isMobile && (
+          <button onClick={onClose} className="ml-auto text-text-light hover:text-text-dark text-lg">&times;</button>
+        )}
       </div>
 
       {/* Nav */}
@@ -151,11 +168,18 @@ function Sidebar({ currentRoute }) {
             <a
               key={item.path}
               href={"#" + item.path}
-              className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors ${
+              onClick={onClose}
+              className={`flex items-center gap-3 px-3 py-2.5 rounded-btn text-sm transition-all ${
                 isActive
-                  ? "bg-white/10 text-white"
-                  : "text-gray-400 hover:text-white hover:bg-white/5"
+                  ? "font-semibold"
+                  : "text-text-mid hover:text-deep-purple"
               }`}
+              style={isActive ? {
+                background: 'rgba(107,92,231,0.1)',
+                color: 'var(--deep-purple)',
+              } : undefined}
+              onMouseEnter={e => { if (!isActive) e.currentTarget.style.background = 'rgba(107,92,231,0.06)'; }}
+              onMouseLeave={e => { if (!isActive) e.currentTarget.style.background = ''; }}
             >
               <span className="text-lg">{item.icon}</span>
               <span>{item.label}</span>
@@ -163,43 +187,75 @@ function Sidebar({ currentRoute }) {
           );
         })}
       </nav>
+
+      {/* 底部 */}
+      <div className="px-5 py-4 text-text-light text-xs text-center" style={{ borderTop: '1px solid rgba(107,92,231,0.08)' }}>
+        🐧 鹅在值班中～
+      </div>
     </aside>
   );
 }
 
 // ============ Header ============
 
-function Header({ user, onLogout }) {
+function Header({ user, onLogout, onMenuToggle }) {
   const [showMenu, setShowMenu] = useState(false);
+  const [scrolled, setScrolled] = useState(false);
+
+  useEffect(() => {
+    const handleScroll = () => setScrolled(window.scrollY > 10);
+    window.addEventListener('scroll', handleScroll);
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
 
   return (
-    <header className="h-14 bg-white border-b border-gray-200 flex items-center justify-between px-6 shrink-0">
-      <div className="text-sm text-gray-500">
-        {/* breadcrumb placeholder */}
+    <header
+      className="h-14 flex items-center justify-between px-6 shrink-0 sticky top-0 z-50 transition-shadow"
+      style={{
+        background: 'rgba(248,245,255,0.85)',
+        backdropFilter: 'blur(20px)',
+        borderBottom: '1px solid rgba(107,92,231,0.08)',
+        boxShadow: scrolled ? '0 2px 20px rgba(107,92,231,0.1)' : 'none',
+      }}
+    >
+      <div className="flex items-center gap-3">
+        {/* 移动端汉堡菜单按钮 */}
+        <button
+          onClick={onMenuToggle}
+          className="hidden mobile-menu-btn items-center justify-center w-8 h-8 rounded-lg hover:bg-deep-purple/[0.06] text-text-mid"
+          style={{ display: 'none' }}
+        >
+          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+          </svg>
+        </button>
+        <span className="text-sm text-text-mid">
+          🐧 欢迎回来呀～{user.username}
+        </span>
       </div>
       <div className="relative">
         <button
           onClick={() => setShowMenu(!showMenu)}
-          className="flex items-center gap-2 hover:bg-gray-50 rounded-lg px-3 py-1.5 transition-colors"
+          className="flex items-center gap-2 rounded-btn px-3 py-1.5 transition-colors hover:bg-deep-purple/[0.06]"
         >
           {user.avatar ? (
-            <img src={user.avatar} alt="" className="w-7 h-7 rounded-full" />
+            <img src={user.avatar} alt="" className="w-7 h-7 rounded-full" style={{ border: '2px solid var(--soft-purple)' }} />
           ) : (
-            <div className="w-7 h-7 rounded-full bg-discord flex items-center justify-center text-white text-xs font-bold">
+            <div className="w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-bold" style={{ background: 'var(--deep-purple)' }}>
               {(user.username || "?")[0]}
             </div>
           )}
-          <span className="text-sm text-gray-700">{user.username}</span>
-          <svg className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <span className="text-sm text-text-dark">{user.username}</span>
+          <svg className="w-4 h-4 text-text-light" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
           </svg>
         </button>
 
         {showMenu && (
-          <div className="absolute right-0 mt-1 w-36 bg-white rounded-lg shadow-lg border border-gray-100 py-1 z-50">
+          <div className="absolute right-0 mt-1 w-36 bg-white rounded-btn shadow-lg py-1 z-50" style={{ border: '1px solid rgba(107,92,231,0.08)' }}>
             <button
               onClick={onLogout}
-              className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors"
+              className="w-full text-left px-4 py-2 text-sm text-red-500 hover:bg-soft-pink/50 transition-colors"
             >
               退出登录
             </button>
@@ -210,10 +266,33 @@ function Header({ user, onLogout }) {
   );
 }
 
+// ============ 返回顶部按钮 ============
+
+function BackToTop() {
+  const [visible, setVisible] = useState(false);
+
+  useEffect(() => {
+    const handleScroll = () => setVisible(window.scrollY > 300);
+    window.addEventListener('scroll', handleScroll);
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
+
+  return (
+    <button
+      className={`back-to-top ${visible ? 'visible' : ''}`}
+      onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+      title="返回顶部"
+    >
+      ↑
+    </button>
+  );
+}
+
 // ============ App Layout ============
 
 function AppLayout({ user, onLogout }) {
   const route = useHashRoute();
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   let page;
   if (route === "/" || route === "")      page = <DashboardPage />;
@@ -227,13 +306,27 @@ function AppLayout({ user, onLogout }) {
 
   return (
     <div className="flex min-h-screen">
-      <Sidebar currentRoute={route} />
+      {/* 桌面端侧边栏 */}
+      <div className="sidebar-desktop">
+        <Sidebar currentRoute={route} onClose={() => {}} />
+      </div>
+
+      {/* 移动端侧边栏 */}
+      {mobileMenuOpen && (
+        <div className="sidebar-overlay" onClick={() => setMobileMenuOpen(false)}></div>
+      )}
+      <div className={`sidebar-mobile ${mobileMenuOpen ? 'open' : ''}`}>
+        <Sidebar currentRoute={route} isMobile onClose={() => setMobileMenuOpen(false)} />
+      </div>
+
       <div className="flex-1 flex flex-col min-h-screen">
-        <Header user={user} onLogout={onLogout} />
-        <main className="flex-1 p-6 overflow-auto">
+        <Header user={user} onLogout={onLogout} onMenuToggle={() => setMobileMenuOpen(!mobileMenuOpen)} />
+        <main className="flex-1 p-6 overflow-auto page-enter">
           {page}
         </main>
       </div>
+
+      <BackToTop />
     </div>
   );
 }
@@ -290,10 +383,10 @@ function App() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-main">
+      <div className="min-h-screen flex items-center justify-center" style={{ background: 'var(--snow-white)' }}>
         <div className="text-center">
-          <div className="text-5xl mb-4 animate-bounce">🐧</div>
-          <p className="text-gray-400 text-sm">加载中...</p>
+          <div className="text-5xl mb-4 penguin-bounce">🐧</div>
+          <p className="text-text-mid text-sm">🐧 小鹅子正在翻找...</p>
         </div>
       </div>
     );

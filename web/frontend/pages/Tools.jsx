@@ -1,12 +1,13 @@
 /* ============================================================
    工具页面
    公告发送 + 操作日志
+   风格：可爱冰雪甜品
    ============================================================ */
 
 function ToolsPage() {
   return (
-    <div>
-      <h1 className="text-2xl font-bold text-gray-800 mb-6">工具</h1>
+    <div className="page-enter">
+      <h1 className="text-2xl font-bold text-text-dark mb-6 font-title">🔧 鹅的工具箱</h1>
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <AnnouncementTool />
         <TaskLog />
@@ -84,44 +85,47 @@ function AnnouncementTool() {
   }
 
   return (
-    <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-      <div className="px-5 py-3 border-b border-gray-100">
-        <h2 className="font-semibold text-gray-700 text-sm">发送公告</h2>
+    <div className="bg-white rounded-card border border-deep-purple/[0.06] overflow-hidden" style={{ boxShadow: '0 4px 20px rgba(107,92,231,0.08)' }}>
+      <div className="px-5 py-3" style={{ borderBottom: '1px solid rgba(107,92,231,0.06)' }}>
+        <h2 className="font-semibold text-text-dark text-sm">📢 代发公告</h2>
       </div>
       <div className="p-5 space-y-4">
         {/* 频道 ID */}
         <div>
-          <label className="block text-xs font-medium text-gray-500 mb-1">频道 ID</label>
+          <label className="block text-xs font-medium text-text-mid mb-1">频道 ID</label>
           <input
             type="text"
             value={channelId}
             onChange={e => setChannelId(e.target.value)}
-            placeholder="输入 Discord 频道 ID"
-            className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:border-blue-300 focus:ring-1 focus:ring-blue-100 font-mono"
+            placeholder="在这里输入呀～"
+            className="w-full px-4 py-2.5 text-sm rounded-btn font-mono transition-all"
+            style={{ border: '1.5px solid rgba(107,92,231,0.15)', outline: 'none' }}
+            onFocus={e => { e.target.style.borderColor = 'var(--deep-purple)'; e.target.style.boxShadow = '0 0 0 3px rgba(107,92,231,0.1)'; }}
+            onBlur={e => { e.target.style.borderColor = 'rgba(107,92,231,0.15)'; e.target.style.boxShadow = 'none'; }}
           />
         </div>
 
         {/* 模式切换 */}
         <div>
-          <label className="block text-xs font-medium text-gray-500 mb-1">消息类型</label>
+          <label className="block text-xs font-medium text-text-mid mb-1">消息类型</label>
           <div className="flex gap-2">
             <button
               onClick={() => setMode("text")}
-              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-                mode === "text"
-                  ? "bg-blue-100 text-blue-700"
-                  : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-              }`}
+              className="px-3 py-1.5 rounded-btn text-xs font-medium transition-all"
+              style={{
+                background: mode === "text" ? 'var(--deep-purple)' : 'rgba(107,92,231,0.06)',
+                color: mode === "text" ? 'white' : 'var(--text-mid)',
+              }}
             >
               纯文本
             </button>
             <button
               onClick={() => setMode("embed")}
-              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-                mode === "embed"
-                  ? "bg-blue-100 text-blue-700"
-                  : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-              }`}
+              className="px-3 py-1.5 rounded-btn text-xs font-medium transition-all"
+              style={{
+                background: mode === "embed" ? 'var(--deep-purple)' : 'rgba(107,92,231,0.06)',
+                color: mode === "embed" ? 'white' : 'var(--text-mid)',
+              }}
             >
               Embed
             </button>
@@ -130,37 +134,44 @@ function AnnouncementTool() {
 
         {/* Embed 字段 */}
         {mode === "embed" && (
-          <div className="space-y-3 bg-gray-50 rounded-lg p-3 border border-gray-100">
+          <div className="space-y-3 rounded-2xl p-3 border" style={{ background: 'var(--snow-white)', borderColor: 'rgba(107,92,231,0.06)' }}>
             <div>
-              <label className="block text-xs font-medium text-gray-500 mb-1">Embed 标题</label>
+              <label className="block text-xs font-medium text-text-mid mb-1">Embed 标题</label>
               <input
                 type="text"
                 value={embedTitle}
                 onChange={e => setEmbedTitle(e.target.value)}
-                placeholder="标题"
-                className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:border-blue-300 bg-white"
+                placeholder="在这里输入呀～"
+                className="w-full px-4 py-2.5 text-sm rounded-btn bg-white transition-all"
+                style={{ border: '1.5px solid rgba(107,92,231,0.15)', outline: 'none' }}
+                onFocus={e => { e.target.style.borderColor = 'var(--deep-purple)'; e.target.style.boxShadow = '0 0 0 3px rgba(107,92,231,0.1)'; }}
+                onBlur={e => { e.target.style.borderColor = 'rgba(107,92,231,0.15)'; e.target.style.boxShadow = 'none'; }}
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-gray-500 mb-1">Embed 描述</label>
+              <label className="block text-xs font-medium text-text-mid mb-1">Embed 描述</label>
               <textarea
                 value={embedDesc}
                 onChange={e => setEmbedDesc(e.target.value)}
-                placeholder="描述内容（支持 Markdown）"
+                placeholder="在这里输入呀～（支持 Markdown）"
                 rows={3}
-                className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:border-blue-300 bg-white resize-none"
+                className="w-full px-4 py-2.5 text-sm rounded-btn bg-white resize-none transition-all"
+                style={{ border: '1.5px solid rgba(107,92,231,0.15)', outline: 'none' }}
+                onFocus={e => { e.target.style.borderColor = 'var(--deep-purple)'; e.target.style.boxShadow = '0 0 0 3px rgba(107,92,231,0.1)'; }}
+                onBlur={e => { e.target.style.borderColor = 'rgba(107,92,231,0.15)'; e.target.style.boxShadow = 'none'; }}
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-gray-500 mb-1">颜色</label>
+              <label className="block text-xs font-medium text-text-mid mb-1">颜色</label>
               <div className="flex items-center gap-2">
                 <input
                   type="color"
                   value={embedColor}
                   onChange={e => setEmbedColor(e.target.value)}
-                  className="w-8 h-8 rounded border border-gray-200 cursor-pointer"
+                  className="w-8 h-8 rounded-lg cursor-pointer"
+                  style={{ border: '1.5px solid rgba(107,92,231,0.15)' }}
                 />
-                <span className="text-xs text-gray-400 font-mono">{embedColor}</span>
+                <span className="text-xs text-text-light font-mono">{embedColor}</span>
               </div>
             </div>
           </div>
@@ -168,15 +179,18 @@ function AnnouncementTool() {
 
         {/* 文本内容 */}
         <div>
-          <label className="block text-xs font-medium text-gray-500 mb-1">
+          <label className="block text-xs font-medium text-text-mid mb-1">
             {mode === "text" ? "公告内容" : "附加文本（可选）"}
           </label>
           <textarea
             value={content}
             onChange={e => setContent(e.target.value)}
-            placeholder="输入消息内容..."
+            placeholder="在这里输入呀～"
             rows={4}
-            className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:border-blue-300 focus:ring-1 focus:ring-blue-100 resize-none"
+            className="w-full px-4 py-2.5 text-sm rounded-btn resize-none transition-all"
+            style={{ border: '1.5px solid rgba(107,92,231,0.15)', outline: 'none' }}
+            onFocus={e => { e.target.style.borderColor = 'var(--deep-purple)'; e.target.style.boxShadow = '0 0 0 3px rgba(107,92,231,0.1)'; }}
+            onBlur={e => { e.target.style.borderColor = 'rgba(107,92,231,0.15)'; e.target.style.boxShadow = 'none'; }}
           />
         </div>
 
@@ -184,21 +198,29 @@ function AnnouncementTool() {
         <button
           onClick={handleSend}
           disabled={sending}
-          className="w-full py-2.5 bg-blue-500 hover:bg-blue-600 text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-50"
+          className="w-full py-2.5 text-white text-sm font-semibold rounded-btn transition-all disabled:opacity-50 hover:-translate-y-0.5"
+          style={{ background: 'var(--deep-purple)', boxShadow: '0 4px 16px rgba(107,92,231,0.3)' }}
+          onMouseEnter={e => { if (!sending) e.currentTarget.style.boxShadow = '0 6px 20px rgba(107,92,231,0.4)'; }}
+          onMouseLeave={e => e.currentTarget.style.boxShadow = '0 4px 16px rgba(107,92,231,0.3)'}
         >
-          {sending ? "发送中..." : "发送公告"}
+          {sending ? "发送中..." : "交给鹅！"}
         </button>
 
         {/* 结果 */}
         {result && (
-          <div className={`rounded-lg p-3 text-sm ${
-            result.error
-              ? "bg-red-50 border border-red-200 text-red-600"
-              : "bg-green-50 border border-green-200 text-green-700"
-          }`}>
+          <div
+            className="rounded-2xl p-4 text-sm"
+            style={result.error ? {
+              background: 'var(--soft-pink)',
+              borderLeft: '4px solid #ff6680',
+            } : {
+              background: 'var(--mint-green)',
+              borderLeft: '4px solid #66cc99',
+            }}
+          >
             {result.error
-              ? result.error
-              : `发送成功 (消息 ID: ${result.message_id || "-"})`}
+              ? `❌ ${result.error}`
+              : `✅ 🐧 公告发出去啦～ (消息 ID: ${result.message_id || "-"})`}
           </div>
         )}
       </div>
@@ -229,10 +251,10 @@ function TaskLog() {
   }
 
   const statusConfig = {
-    pending:    { text: "等待中", bg: "bg-yellow-100", color: "text-yellow-700" },
-    processing: { text: "执行中", bg: "bg-blue-100",   color: "text-blue-700" },
-    done:       { text: "完成",   bg: "bg-green-100",  color: "text-green-700" },
-    failed:     { text: "失败",   bg: "bg-red-100",    color: "text-red-600" },
+    pending:    { text: "等待中", bg: "var(--warm-peach)", color: "#e6940a" },
+    processing: { text: "执行中", bg: "var(--ice-blue)",   color: "var(--deep-purple)" },
+    done:       { text: "完成",   bg: "var(--mint-green)",  color: "#22c55e" },
+    failed:     { text: "失败",   bg: "var(--soft-pink)",    color: "#ff4466" },
   };
 
   const typeLabels = {
@@ -245,40 +267,57 @@ function TaskLog() {
   };
 
   return (
-    <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-      <div className="px-5 py-3 border-b border-gray-100 flex items-center justify-between">
-        <h2 className="font-semibold text-gray-700 text-sm">操作日志</h2>
+    <div className="bg-white rounded-card border border-deep-purple/[0.06] overflow-hidden" style={{ boxShadow: '0 4px 20px rgba(107,92,231,0.08)' }}>
+      <div className="px-5 py-3 flex items-center justify-between" style={{ borderBottom: '1px solid rgba(107,92,231,0.06)' }}>
+        <h2 className="font-semibold text-text-dark text-sm">📋 操作日志</h2>
         <button
           onClick={loadTasks}
-          className="text-xs text-gray-400 hover:text-gray-600 transition-colors"
+          className="text-xs font-medium px-3 py-1 rounded-btn transition-all"
+          style={{ color: 'var(--deep-purple)', background: 'rgba(107,92,231,0.06)' }}
+          onMouseEnter={e => e.currentTarget.style.background = 'rgba(107,92,231,0.12)'}
+          onMouseLeave={e => e.currentTarget.style.background = 'rgba(107,92,231,0.06)'}
         >
-          刷新
+          再看看
         </button>
       </div>
 
       {loading ? (
-        <div className="px-5 py-8 text-center text-gray-400 text-sm">加载中...</div>
+        <div className="px-5 py-8 text-center text-text-light text-sm">
+          <span className="snowflake-spin inline-block mr-1">❄️</span> 加载中...
+        </div>
       ) : tasks.length === 0 ? (
-        <div className="px-5 py-8 text-center text-gray-300 text-sm">暂无操作记录</div>
+        <div className="px-5 py-8 text-center text-text-light text-sm">
+          <div className="text-4xl mb-2">📋</div>
+          🐧 暂无操作记录呢
+        </div>
       ) : (
-        <div className="divide-y divide-gray-50 max-h-[500px] overflow-y-auto">
+        <div className="max-h-[500px] overflow-y-auto">
           {tasks.map(task => {
             const sc = statusConfig[task.status] || statusConfig.pending;
             return (
-              <div key={task.id} className="px-5 py-3 hover:bg-gray-50 transition-colors">
+              <div
+                key={task.id}
+                className="px-5 py-3 transition-colors"
+                style={{ borderBottom: '1px solid rgba(107,92,231,0.06)' }}
+                onMouseEnter={e => e.currentTarget.style.background = 'var(--lavender)'}
+                onMouseLeave={e => e.currentTarget.style.background = ''}
+              >
                 <div className="flex items-center justify-between mb-1">
                   <div className="flex items-center gap-2">
-                    <span className="text-sm font-medium text-gray-700">
+                    <span className="text-sm font-medium text-text-dark">
                       {typeLabels[task.task_type] || task.task_type}
                     </span>
-                    <span className={`px-1.5 py-0.5 rounded text-xs font-medium ${sc.bg} ${sc.color}`}>
+                    <span
+                      className="px-1.5 py-0.5 rounded-lg text-xs font-medium"
+                      style={{ background: sc.bg, color: sc.color }}
+                    >
                       {sc.text}
                     </span>
                   </div>
-                  <span className="text-xs text-gray-400">{formatTime(task.created_at)}</span>
+                  <span className="text-xs text-text-light">{formatTime(task.created_at)}</span>
                 </div>
                 {task.result && (
-                  <p className="text-xs text-gray-500 truncate">
+                  <p className="text-xs text-text-mid truncate">
                     {typeof task.result === "object"
                       ? (task.result.error || JSON.stringify(task.result))
                       : String(task.result)}
