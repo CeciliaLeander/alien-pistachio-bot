@@ -74,32 +74,7 @@ function Link({ to, children, className, activeClass, currentRoute }) {
 }
 
 // ============ 页面占位组件 ============
-
-function DashboardPage() {
-  return (
-    <div>
-      <h1 className="text-2xl font-bold text-gray-800 mb-6">仪表盘</h1>
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        <StatCard icon="📁" title="文件管理" desc="管理帖子文件、查看追踪记录" link="#/files" />
-        <StatCard icon="🎭" title="匿名区" desc="查看匿名消息、查询真实身份" link="#/anon" />
-        <StatCard icon="🎰" title="抽奖管理" desc="查看抽奖、手动开奖、取消" link="#/lottery" />
-        <StatCard icon="🏷️" title="身份组" desc="临时身份组、订阅面板" link="#/roles" />
-        <StatCard icon="🔧" title="工具" desc="批量删除、发送公告" link="#/tools" />
-        <StatCard icon="❓" title="使用说明" desc="FAQ 和操作指南" link="#/faq" />
-      </div>
-    </div>
-  );
-}
-
-function StatCard({ icon, title, desc, link }) {
-  return (
-    <a href={link} className="block bg-white rounded-xl p-6 shadow-sm hover:shadow-md transition-shadow border border-gray-100">
-      <div className="text-3xl mb-3">{icon}</div>
-      <h3 className="text-lg font-semibold text-gray-800 mb-1">{title}</h3>
-      <p className="text-sm text-gray-500">{desc}</p>
-    </a>
-  );
-}
+// DashboardPage 已移至 pages/Dashboard.jsx
 
 function PlaceholderPage({ title, icon }) {
   return (

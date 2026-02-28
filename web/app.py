@@ -14,6 +14,7 @@ from api_lottery import lottery_bp
 from api_roles import roles_bp
 from api_messages import messages_bp
 from api_tasks import tasks_bp
+from api_stats import stats_bp
 
 app = Flask(__name__, static_folder="frontend", static_url_path="")
 app.secret_key = os.getenv("FLASK_SECRET_KEY", os.urandom(32).hex())
@@ -29,6 +30,7 @@ app.register_blueprint(lottery_bp)
 app.register_blueprint(roles_bp)
 app.register_blueprint(messages_bp)
 app.register_blueprint(tasks_bp)
+app.register_blueprint(stats_bp)
 
 
 # ============ 前端静态文件服务 ============
