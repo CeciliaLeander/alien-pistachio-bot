@@ -203,14 +203,13 @@
 </head>
 <body>
   <div id="root"></div>
-  <!-- 页面组件（需在 app.jsx 之前加载） -->
-  <script type="text/babel" data-type="module" src="pages/Dashboard.jsx"></script>
-  <script type="text/babel" data-type="module" src="pages/Files.jsx"></script>
-  <script type="text/babel" data-type="module" src="pages/Anon.jsx"></script>
-  <script type="text/babel" data-type="module" src="pages/Lottery.jsx"></script>
-  <script type="text/babel" data-type="module" src="pages/Roles.jsx"></script>
-  <script type="text/babel" data-type="module" src="pages/Tools.jsx"></script>
-  <!-- 主应用 -->
-  <script type="text/babel" data-type="module" src="app.jsx"></script>
+  <!-- 先定义一个全局加载函数，确保顺序 -->
+  <script type="text/babel" src="pages/Dashboard.jsx"></script>
+  <script type="text/babel" src="pages/Files.jsx"></script>
+  <script type="text/babel" src="pages/Anon.jsx"></script>
+  <script type="text/babel" src="pages/Lottery.jsx"></script>
+  <script type="text/babel" src="pages/Roles.jsx"></script>
+  <script type="text/babel" src="pages/Tools.jsx"></script>
+  <script type="text/babel" src="app.jsx"></script>
 </body>
 </html>
