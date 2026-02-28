@@ -122,6 +122,9 @@ function RolesPage() {
     <div className="page-enter">
       <h1 className="text-2xl font-bold text-text-dark mb-6 font-title">🏷️ 身份组管理</h1>
 
+      {/* 发放临时身份组 */}
+      <GrantTempRoleForm onSuccess={loadAll} />
+
       {/* 临时身份组 */}
       <div className="bg-white rounded-card border border-deep-purple/[0.06] overflow-hidden mb-6" style={{ boxShadow: '0 4px 20px rgba(107,92,231,0.08)' }}>
         <div className="px-5 py-3 flex items-center justify-between" style={{ borderBottom: '1px solid rgba(107,92,231,0.06)' }}>
@@ -285,6 +288,160 @@ function RolesPage() {
       </div>
     </div>
   );
+}
+
+// ============ 辅助函数 ============
+
+// ============ 发放临时身份组表单 ============
+
+function GrantTempRoleForm({ onSuccess }) {
+  const [userId, setUserId] = React.useState("");
+  const [roleId, setRoleId] = React.useState("");
+  const [duration, setDuration] = React.useState("");
+  const [sending, setSending] = React.useState(false);
+  const [result, setResult] = React.useState(null);
+
+  async function handleGrant() {
+    if (!userId.trim() || !roleId.trim() || !duration.trim()) {
+      setResult({ error: "请填写所有字段" });
+      return;
+    }
+
+    // 计算到期时间
+    const expireAt = calculateExpireTime(duration.trim());
+    if (!expireAt) {
+      setResult({ error: "时间格式不对呀～例：30m / 2h / 7d / 1d12h" });
+      return;
+    }
+
+    setSending(true);
+    setResult(null);
+    try {
+      const resp = await api("/tasks", {
+        method: "POST",
+        body: JSON.stringify({
+          task_type: "grant_temp_role",
+          payload: {
+            user_id: parseInt(userId),
+            role_id: parseInt(roleId),
+            expire_at: expireAt,
+          },
+        }),
+      });
+      const data = await resp.json();
+      if (!resp.ok) throw new Error(data.error || "创建任务失败");
+
+      // 轮询结果
+      const taskResult = await pollTask(data.task_id);
+      if (taskResult.error) {
+        setResult({ error: taskResult.error });
+      } else {
+        setResult({ ok: true });
+        setUserId("");
+        setRoleId("");
+        setDuration("");
+        if (onSuccess) onSuccess();
+      }
+    } catch (e) {
+      setResult({ error: e.message });
+    } finally {
+      setSending(false);
+    }
+  }
+
+  return (
+    <div className="bg-white rounded-card border border-deep-purple/[0.06] overflow-hidden mb-6" style={{ boxShadow: '0 4px 20px rgba(107,92,231,0.08)' }}>
+      <div className="px-5 py-3" style={{ borderBottom: '1px solid rgba(107,92,231,0.06)' }}>
+        <h2 className="font-semibold text-text-dark text-sm">🎁 发放临时身份组</h2>
+        <p className="text-xs text-text-light mt-0.5">直接在面板给成员发放有时限的身份组</p>
+      </div>
+      <div className="p-5">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mb-4">
+          <div>
+            <label className="block text-xs font-medium text-text-mid mb-1">用户 ID</label>
+            <input
+              type="text"
+              value={userId}
+              onChange={e => setUserId(e.target.value)}
+              placeholder="如：123456789"
+              className="w-full px-3 py-2 text-sm rounded-btn font-mono transition-all"
+              style={{ border: '1.5px solid rgba(107,92,231,0.15)', outline: 'none' }}
+              onFocus={e => { e.target.style.borderColor = 'var(--deep-purple)'; e.target.style.boxShadow = '0 0 0 3px rgba(107,92,231,0.1)'; }}
+              onBlur={e => { e.target.style.borderColor = 'rgba(107,92,231,0.15)'; e.target.style.boxShadow = 'none'; }}
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-text-mid mb-1">身份组 ID</label>
+            <input
+              type="text"
+              value={roleId}
+              onChange={e => setRoleId(e.target.value)}
+              placeholder="如：987654321"
+              className="w-full px-3 py-2 text-sm rounded-btn font-mono transition-all"
+              style={{ border: '1.5px solid rgba(107,92,231,0.15)', outline: 'none' }}
+              onFocus={e => { e.target.style.borderColor = 'var(--deep-purple)'; e.target.style.boxShadow = '0 0 0 3px rgba(107,92,231,0.1)'; }}
+              onBlur={e => { e.target.style.borderColor = 'rgba(107,92,231,0.15)'; e.target.style.boxShadow = 'none'; }}
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-text-mid mb-1">时长</label>
+            <input
+              type="text"
+              value={duration}
+              onChange={e => setDuration(e.target.value)}
+              placeholder="30m / 2h / 7d"
+              className="w-full px-3 py-2 text-sm rounded-btn transition-all"
+              style={{ border: '1.5px solid rgba(107,92,231,0.15)', outline: 'none' }}
+              onFocus={e => { e.target.style.borderColor = 'var(--deep-purple)'; e.target.style.boxShadow = '0 0 0 3px rgba(107,92,231,0.1)'; }}
+              onBlur={e => { e.target.style.borderColor = 'rgba(107,92,231,0.15)'; e.target.style.boxShadow = 'none'; }}
+            />
+          </div>
+          <div className="flex items-end">
+            <button
+              onClick={handleGrant}
+              disabled={sending}
+              className="w-full py-2 text-white text-sm font-semibold rounded-btn transition-all disabled:opacity-50 hover:-translate-y-0.5"
+              style={{ background: 'var(--deep-purple)', boxShadow: '0 4px 16px rgba(107,92,231,0.3)' }}
+            >
+              {sending ? "发放中..." : "交给鹅！"}
+            </button>
+          </div>
+        </div>
+
+        <p className="text-xs text-text-light">
+          用户ID和身份组ID可在Discord中右键复制（需开启开发者模式）。时长格式：30m（分钟）、2h（小时）、7d（天）、1d12h（组合）
+        </p>
+
+        {result && (
+          <div className={`mt-3 rounded-2xl p-3 text-sm`}
+            style={result.error ? {
+              background: 'var(--soft-pink)', borderLeft: '4px solid #ff6680'
+            } : {
+              background: 'var(--mint-green)', borderLeft: '4px solid #66cc99'
+            }}
+          >
+            {result.error ? `${result.error}` : "身份组发放成功！到期后会自动移除哦～"}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// 前端计算到期时间的辅助函数
+function calculateExpireTime(durationStr) {
+  const pattern = /(\d+)\s*([dhm])/gi;
+  let totalMs = 0;
+  let match;
+  while ((match = pattern.exec(durationStr)) !== null) {
+    const value = parseInt(match[1]);
+    const unit = match[2].toLowerCase();
+    if (unit === 'd') totalMs += value * 86400000;
+    else if (unit === 'h') totalMs += value * 3600000;
+    else if (unit === 'm') totalMs += value * 60000;
+  }
+  if (totalMs === 0) return null;
+  return new Date(Date.now() + totalMs).toISOString();
 }
 
 // ============ 辅助函数 ============

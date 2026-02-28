@@ -5,6 +5,7 @@ Discord OAuth2 认证模块
 
 import os
 import hashlib
+import json
 import time
 import sqlite3
 
@@ -161,9 +162,24 @@ def _get_guild_roles() -> dict:
 
 def _is_admin(member_role_ids: list, guild_roles: dict) -> bool:
     """检查成员身份组中是否包含管理员身份组"""
+    # 从数据库读取管理员身份组名称
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("SELECT value FROM bot_config WHERE key = 'admin_role_names'")
+    result = c.fetchone()
+    conn.close()
+
+    if result:
+        try:
+            admin_names = json.loads(result[0])
+        except (json.JSONDecodeError, TypeError):
+            admin_names = ADMIN_ROLE_NAMES
+    else:
+        admin_names = ADMIN_ROLE_NAMES
+
     for role_id in member_role_ids:
         role_name = guild_roles.get(str(role_id), guild_roles.get(role_id, ""))
-        if role_name in ADMIN_ROLE_NAMES:
+        if role_name in admin_names:
             return True
     return False
 
