@@ -184,111 +184,10 @@ def init_db():
         UNIQUE(guild_id, user_id, role_id)
     )''')
 
-    # ========== Web 管理面板任务队列表 ==========
-    c.execute('''CREATE TABLE IF NOT EXISTS web_tasks (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        task_type TEXT NOT NULL,
-        payload TEXT NOT NULL,
-        status TEXT NOT NULL DEFAULT 'pending',
-        result TEXT,
-        created_at TEXT NOT NULL,
-        completed_at TEXT
-    )''')
-
-    # ========== Bot 可配置项存储表 ==========
-    c.execute('''CREATE TABLE IF NOT EXISTS bot_config (
-        key TEXT PRIMARY KEY,
-        value TEXT NOT NULL,
-        updated_at TEXT NOT NULL
-    )''')
-
-    # 初始化默认值（仅在不存在时插入）
-    import json as _json
-    defaults = {
-        "welcome_message": _json.dumps({
-            "text": (
-                "👂 哇！{member_name} 来啦来啦！\n"
-                "小鹅子在这里！鹅是一只外星企鹅留在开心果雪山的进食器官～虽然没有眼睛也没有大脑，但是会努力当好管家的！\n\n"
-                "**新朋友看这里呀：**\n"
-                "1. 雪山的规矩和板块介绍在这里哦：{rules_link} ，社区公告在这里哦，有趣的社区事情在这里播报：\n"
-                "2. 看完能接受的话，若您不是lc或wbz成员，可以去新人提问区@【发卡组】或名称含有「新人bot」相关的老师礼貌申请卡区身份组：可颂🥐\n"
-                "3. 记得善用频道标注功能哦，有标注的都是重要消息！\n"
-                "4. 有问题来这里问就好啦：{newbie_qa_link}\n\n"
-                "希望你在雪山玩得开心呀！鹅会乖乖看好仓库的～🐾"
-            ),
-            "show_guide_image": True
-        }, ensure_ascii=False),
-
-        "rules_message": _json.dumps({
-            "text": (
-                "👂 **雪山生存守则**～鹅来念给你听！\n\n"
-                "1. 规矩和板块介绍都在这里哦：{rules_link}\n"
-                "2. 看完觉得OK的话，若您不是lc或wbz成员，"
-                "可以去新人提问区@【发卡组】或名称为「新人bot相关」的老师礼貌申请卡区身份组：可颂🥐\n"
-                "3. 善用频道标注功能呀！有标注的都是重要消息哦～\n"
-                "4. 有问题来这里问就好啦：{newbie_qa_link}\n\n"
-            ),
-            "show_guide_image": True
-        }, ensure_ascii=False),
-
-        "admin_role_names": _json.dumps(["开心果bot", "见习开心果bot"], ensure_ascii=False),
-
-        "anon_nicknames": _json.dumps([
-            "🍦 冰淇淋泡芙", "🧁 雪域杯子蛋糕", "🍰 冰山芝士蛋糕", "❄️ 雪花马卡龙",
-            "🍨 冰雪圣代", "🧊 冰晶棉花糖", "🍧 雪融刨冰", "🎂 霜糖蛋糕卷",
-            "🍩 雪顶甜甜圈", "🍪 冰霜曲奇", "🧇 雪花华夫饼", "🍮 冰镇布丁",
-            "🍡 雪见团子", "🥧 冰雪派", "🍬 霜糖奶糖", "🫧 冰泡芙",
-            "🌨️ 雪绒提拉米苏", "☃️ 雪人慕斯", "🏔️ 冰峰千层", "💎 水晶果冻",
-            "🌙 月光雪糕", "⛄ 雪球麻薯", "🎀 冰丝可丽饼", "🦢 天鹅泡芙",
-            "🐧 企鹅冰棒", "🐻‍❄️ 北极熊奶昔", "🦊 雪狐蛋挞", "🐰 雪兔大福",
-            "🌸 樱雪铜锣烧", "🍓 冰莓舒芙蕾", "🫐 蓝莓雪冰", "🍑 蜜桃冰沙",
-            "🥝 雪梨奶冻", "🍋 柠檬冰霜", "🍇 葡萄雪泥", "🥥 椰雪冰糕",
-            "🌈 彩虹冰棍", "✨ 星光雪饼", "🔮 水晶汤圆", "🪄 魔法雪糕",
-            "🎪 梦幻冰塔", "🎠 旋转冰淇淋", "🎡 摩天轮雪顶", "🏰 冰雪城堡蛋糕",
-            "🌊 海盐冰淇淋", "🧸 棉花糖小熊", "🎵 奏鸣曲雪糕", "🦋 蝴蝶酥冰淇淋",
-            "🌻 向日葵冰饼", "🍂 枫糖雪球", "💫 流星冰沙", "🪷 雪莲慕斯",
-            "🎐 风铃冰棒", "🏮 灯笼冰粉", "🎋 竹叶雪糕", "🌿 薄荷冰淇淋",
-            "🍵 抹茶冰雪", "☕ 拿铁冰霜", "🥛 奶雪冰砖", "🧋 珍珠冰沙",
-            "🫖 雪融奶茶", "🍶 清酒冰糕", "🥂 气泡冰酒", "🍹 冰雪鸡尾酒",
-        ], ensure_ascii=False),
-    }
-
-    for key, value in defaults.items():
-        c.execute(
-            "INSERT OR IGNORE INTO bot_config (key, value, updated_at) VALUES (?, ?, ?)",
-            (key, value, datetime.now().isoformat())
-        )
-
     conn.commit()
     conn.close()
 
 init_db()
-
-# ============ 配置读取辅助 ============
-
-def get_config(key: str, default=None):
-    """从数据库读取配置项"""
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute("SELECT value FROM bot_config WHERE key = ?", (key,))
-    result = c.fetchone()
-    conn.close()
-    if result:
-        try:
-            return json.loads(result[0])
-        except (json.JSONDecodeError, TypeError):
-            return result[0]
-    return default
-
-
-def get_admin_role_names():
-    """获取管理员身份组名称列表"""
-    return get_config("admin_role_names", ADMIN_ROLE_NAMES)
-
-
-def get_anon_nicknames():
-    """获取匿名昵称池"""
-    return get_config("anon_nicknames", ANON_NICKNAMES)
 
 # ============ Bot 初始化 ============
 intents = discord.Intents.default()
@@ -305,9 +204,8 @@ def generate_tracking_code():
     return uuid.uuid4().hex[:8].upper()
 
 def is_admin(interaction: discord.Interaction) -> bool:
-    """检查用户是否为管理员（从数据库读取身份组名称）"""
-    admin_names = get_admin_role_names()
-    return any(role.name in admin_names for role in interaction.user.roles)
+    """检查用户是否为管理员"""
+    return any(role.name in ADMIN_ROLE_NAMES for role in interaction.user.roles)
 
 # --- 图片隐写水印（LSB） ---
 
@@ -688,40 +586,26 @@ async def on_ready():
     if temp_entries:
         print(f"[临时身份组恢复] 已恢复 {len(temp_entries)} 个临时身份组")
 
-    # ========== 启动 Web 任务队列处理 ==========
-    if not process_web_tasks.is_running():
-        process_web_tasks.start()
-
     print(f"👂 小鹅子上线了：{bot.user}")
     print(f"👂 已连接雪山：{[g.name for g in bot.guilds]}")
 
 # ============ 新成员欢迎（私信） ============
 @bot.event
 async def on_member_join(member):
-    # 从数据库读取欢迎消息配置
-    config = get_config("welcome_message", {})
-
-    if isinstance(config, dict):
-        text_template = config.get("text", "")
-        show_guide_image = config.get("show_guide_image", True)
-    else:
-        text_template = str(config)
-        show_guide_image = True
-
-    # 替换变量占位符
-    welcome_text = text_template.format(
-        member_name=member.name,
-        member_mention=member.mention,
-        rules_link=RULES_LINK,
-        newbie_qa_link=NEWBIE_QA_LINK,
-        guild_name=member.guild.name if member.guild else "",
+    welcome_text = (
+        f"👂 哇！{member.name} 来啦来啦！\n"
+        "小鹅子在这里！鹅是一只外星企鹅留在开心果雪山的进食器官～虽然没有眼睛也没有大脑，但是会努力当好管家的！\n\n"
+        "**新朋友看这里呀：**\n"
+        f"1. 雪山的规矩和板块介绍在这里哦：{RULES_LINK} ，社区公告在这里哦，有趣的社区事情在这里播报：\n"
+        "2. 看完能接受的话，若您不是lc或wbz成员，可以去新人提问区@【发卡组】或名称含有「新人bot」相关的老师礼貌申请卡区身份组：可颂🥐\n"
+        "3. 记得善用频道标注功能哦，有标注的都是重要消息！\n"
+        f"4. 有问题来这里问就好啦：{NEWBIE_QA_LINK}\n\n"
+        "希望你在雪山玩得开心呀！鹅会乖乖看好仓库的～🐾"
     )
 
-    # 创建嵌入卡片
-    embed = None
-    if show_guide_image:
-        embed = discord.Embed()
-        embed.set_image(url=PINNED_MESSAGE_GUIDE_URL)
+    # 创建嵌入卡片（用来显示图片）
+    embed = discord.Embed()
+    embed.set_image(url=PINNED_MESSAGE_GUIDE_URL)
 
     try:
         await member.send(welcome_text, embed=embed)
@@ -768,25 +652,16 @@ async def help_command(ctx):
 @bot.command(name="规则")
 async def rules_command(ctx):
     """查看社区规范"""
-    config = get_config("rules_message", {})
-
-    if isinstance(config, dict):
-        text_template = config.get("text", "")
-        show_guide_image = config.get("show_guide_image", True)
-    else:
-        text_template = str(config)
-        show_guide_image = True
-
-    rules_text = text_template.format(
-        rules_link=RULES_LINK,
-        newbie_qa_link=NEWBIE_QA_LINK,
+    rules_text = (
+        "👂 **雪山生存守则**～鹅来念给你听！\n\n"
+        f"1. 规矩和板块介绍都在这里哦：{RULES_LINK}\n"
+        "2. 看完觉得OK的话，若您不是lc或wbz成员，"
+        "可以去新人提问区@【发卡组】或名称为「新人bot相关」的老师礼貌申请卡区身份组：可颂🥐\n"
+        "3. 善用频道标注功能呀！有标注的都是重要消息哦～\n"
+        f"4. 有问题来这里问就好啦：{NEWBIE_QA_LINK}\n\n"
     )
-
-    embed = None
-    if show_guide_image:
-        embed = discord.Embed()
-        embed.set_image(url=PINNED_MESSAGE_GUIDE_URL)
-
+    embed = discord.Embed()
+    embed.set_image(url=PINNED_MESSAGE_GUIDE_URL)
     await ctx.send(rules_text, embed=embed)
 
 # ============ 回顶功能 ============
@@ -804,7 +679,7 @@ async def scroll_to_top(interaction: discord.Interaction):
 # ============ 管理员：bot代发公告 ============
 @bot.command(name="公告")
 async def post_announcement(ctx):
-    if not any(role.name in get_admin_role_names() for role in ctx.author.roles):
+    if not any(role.name in ADMIN_ROLE_NAMES for role in ctx.author.roles):
         await ctx.send("👂 这个只有管理员才能用哦～鹅也没办法呀")
         return
 
@@ -1331,14 +1206,11 @@ def get_or_assign_nickname(user_id: int, channel_id: int) -> str:
     c.execute("SELECT nickname FROM anon_identities WHERE channel_id = ?", (channel_id,))
     used_nicknames = {row[0] for row in c.fetchall()}
     
-    # 从数据库读取昵称池
-    nickname_pool = get_anon_nicknames()
-
     # 从昵称池中选一个未使用的
-    available = [n for n in nickname_pool if n not in used_nicknames]
+    available = [n for n in ANON_NICKNAMES if n not in used_nicknames]
     if not available:
         # 如果昵称池用完了，加上数字后缀
-        nickname = random.choice(nickname_pool) + f"·{random.randint(100, 999)}"
+        nickname = random.choice(ANON_NICKNAMES) + f"·{random.randint(100, 999)}"
     else:
         nickname = random.choice(available)
     
@@ -1797,7 +1669,7 @@ async def send_subscribe_panel(interaction: discord.Interaction):
         if not r.is_default()
         and not r.is_bot_managed()
         and not r.is_integration()
-        and r.name not in get_admin_role_names()
+        and r.name not in ADMIN_ROLE_NAMES
         and not r.permissions.administrator
     ]
     
@@ -2425,181 +2297,6 @@ async def bulk_delete(
         result_parts.append(f"（其中 {len(old)} 条是超过14天的旧消息，逐条删除的，比较慢请见谅）")
 
     await interaction.followup.send("\n".join(result_parts), ephemeral=True)
-
-# ============ Web 管理面板任务队列处理 ============
-
-@tasks.loop(seconds=2)
-async def process_web_tasks():
-    """每2秒检查 web_tasks 表，执行 pending 任务"""
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    rows = conn.execute(
-        "SELECT id, task_type, payload FROM web_tasks WHERE status = 'pending' ORDER BY id ASC LIMIT 5"
-    ).fetchall()
-    if not rows:
-        conn.close()
-        return
-
-    for row in rows:
-        task_id = row["id"]
-        task_type = row["task_type"]
-        try:
-            payload = json.loads(row["payload"])
-        except (json.JSONDecodeError, TypeError):
-            payload = {}
-
-        # 标记为 processing
-        conn.execute("UPDATE web_tasks SET status = 'processing' WHERE id = ?", (task_id,))
-        conn.commit()
-
-        result_data = {}
-        try:
-            if task_type == "draw_lottery":
-                lottery_id = payload.get("lottery_id")
-                winners = await do_lottery_draw(bot, lottery_id)
-                if winners is None:
-                    result_data = {"error": "抽奖不存在或已结束"}
-                else:
-                    result_data = {"winners": winners, "count": len(winners)}
-
-            elif task_type == "cancel_lottery":
-                lottery_id = payload.get("lottery_id")
-                c = conn.cursor()
-                c.execute("SELECT status, title, channel_id, message_id FROM lotteries WHERE id = ?", (lottery_id,))
-                lottery = c.fetchone()
-                if not lottery:
-                    result_data = {"error": "抽奖不存在"}
-                elif lottery["status"] != "active":
-                    result_data = {"error": f"抽奖状态为 {lottery['status']}，无法取消"}
-                else:
-                    c.execute("UPDATE lotteries SET status = 'cancelled', ended_at = ? WHERE id = ?",
-                              (datetime.now().isoformat(), lottery_id))
-                    conn.commit()
-                    # 更新 Discord 消息
-                    if lottery["message_id"]:
-                        try:
-                            channel = bot.get_channel(lottery["channel_id"])
-                            if channel:
-                                msg = await channel.fetch_message(lottery["message_id"])
-                                cancel_embed = discord.Embed(
-                                    title=f"❌ {lottery['title']}（已取消）",
-                                    description="这个抽奖已被管理员取消了～",
-                                    color=0xff4444,
-                                )
-                                await msg.edit(embed=cancel_embed, view=None)
-                        except Exception:
-                            pass
-                    result_data = {"ok": True, "title": lottery["title"]}
-
-            elif task_type == "remove_temp_role":
-                temp_role_id = payload.get("temp_role_id")
-                await _remove_temp_role(bot, temp_role_id)
-                result_data = {"ok": True}
-
-            elif task_type == "grant_temp_role":
-                guild_id = payload.get("guild_id", GUILD_ID)
-                user_id = payload.get("user_id")
-                role_id = payload.get("role_id")
-                expire_at = payload.get("expire_at")  # ISO 格式
-                guild = bot.get_guild(guild_id)
-                if not guild:
-                    result_data = {"error": "找不到服务器"}
-                else:
-                    member = guild.get_member(user_id)
-                    if not member:
-                        try:
-                            member = await guild.fetch_member(user_id)
-                        except Exception:
-                            member = None
-                    if not member:
-                        result_data = {"error": "找不到用户"}
-                    else:
-                        role = guild.get_role(role_id)
-                        if not role:
-                            result_data = {"error": "找不到身份组"}
-                        else:
-                            await member.add_roles(role, reason="管理面板发放临时身份组")
-                            expire_dt = datetime.fromisoformat(expire_at)
-                            c = conn.cursor()
-                            c.execute(
-                                "INSERT OR REPLACE INTO temp_roles (guild_id, user_id, role_id, granted_by, granted_at, expire_at, status) "
-                                "VALUES (?, ?, ?, 0, ?, ?, 'active')",
-                                (guild_id, user_id, role_id, datetime.now().isoformat(), expire_dt.isoformat()),
-                            )
-                            tr_id = c.lastrowid
-                            conn.commit()
-                            delay = (expire_dt - datetime.now()).total_seconds()
-                            if delay > 0:
-                                asyncio.create_task(_temp_role_timer(bot, tr_id, delay))
-                            result_data = {"ok": True, "temp_role_id": tr_id}
-
-            elif task_type == "bulk_delete":
-                channel_id = payload.get("channel_id")
-                message_ids = payload.get("message_ids", [])
-                channel = bot.get_channel(channel_id)
-                if not channel:
-                    result_data = {"error": "找不到频道"}
-                else:
-                    deleted = 0
-                    for mid in message_ids:
-                        try:
-                            msg = await channel.fetch_message(mid)
-                            await msg.delete()
-                            deleted += 1
-                            await asyncio.sleep(0.5)
-                        except Exception:
-                            pass
-                    result_data = {"ok": True, "deleted": deleted}
-
-            elif task_type == "send_announcement":
-                channel_id = int(payload.get("channel_id"))
-                content = payload.get("content", "")
-                embed_data = payload.get("embed")
-                channel = bot.get_channel(channel_id)
-                if not channel:
-                    try:
-                        channel = await bot.fetch_channel(channel_id)
-                    except Exception:
-                        channel = None
-                if not channel:
-                    result_data = {"error": "找不到频道"}
-                else:
-                    embed = None
-                    if embed_data:
-                        embed = discord.Embed(
-                            title=embed_data.get("title", ""),
-                            description=embed_data.get("description", ""),
-                            color=embed_data.get("color", 0x88ccff),
-                        )
-                    sent = await channel.send(content=content or None, embed=embed)
-                    result_data = {"ok": True, "message_id": sent.id}
-
-            else:
-                result_data = {"error": f"未知任务类型: {task_type}"}
-
-            # 标记完成
-            conn.execute(
-                "UPDATE web_tasks SET status = 'done', result = ?, completed_at = ? WHERE id = ?",
-                (json.dumps(result_data, ensure_ascii=False), datetime.now().isoformat(), task_id),
-            )
-            conn.commit()
-
-        except Exception as e:
-            # 标记失败
-            conn.execute(
-                "UPDATE web_tasks SET status = 'failed', result = ?, completed_at = ? WHERE id = ?",
-                (json.dumps({"error": str(e)}, ensure_ascii=False), datetime.now().isoformat(), task_id),
-            )
-            conn.commit()
-            print(f"[Web任务] 任务 #{task_id} ({task_type}) 执行失败：{e}")
-
-    conn.close()
-
-
-@process_web_tasks.before_loop
-async def before_process_web_tasks():
-    await bot.wait_until_ready()
-
 
 # ============ 启动 Bot ============
 bot.run(BOT_TOKEN)
