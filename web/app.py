@@ -8,6 +8,11 @@ from flask import Flask, send_from_directory
 from flask_cors import CORS
 
 from auth import auth_bp
+from api_files import files_bp
+from api_anon import anon_bp
+from api_lottery import lottery_bp
+from api_roles import roles_bp
+from api_messages import messages_bp
 
 app = Flask(__name__, static_folder="frontend", static_url_path="")
 app.secret_key = os.getenv("FLASK_SECRET_KEY", os.urandom(32).hex())
@@ -17,10 +22,11 @@ CORS(app, resources={r"/api/*": {"origins": "*"}}, supports_credentials=True)
 
 # ============ 注册蓝图 ============
 app.register_blueprint(auth_bp)
-
-# 后续步骤中会在此处注册更多功能蓝图，例如：
-# from api_files import files_bp
-# app.register_blueprint(files_bp)
+app.register_blueprint(files_bp)
+app.register_blueprint(anon_bp)
+app.register_blueprint(lottery_bp)
+app.register_blueprint(roles_bp)
+app.register_blueprint(messages_bp)
 
 
 # ============ 前端静态文件服务 ============
