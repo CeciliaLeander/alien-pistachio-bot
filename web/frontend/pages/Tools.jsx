@@ -34,7 +34,7 @@ function AnnouncementTool() {
       return;
     }
 
-    const payload = { channel_id: parseInt(channelId) };
+    const payload = { channel_id: channelId.trim() };
 
     if (mode === "text") {
       if (!content.trim()) {
