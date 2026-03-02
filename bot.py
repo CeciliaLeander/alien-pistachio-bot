@@ -24,7 +24,9 @@ NEWBIE_QA_LINK = "https://discord.com/channels/1446888252194816132/1447518124696
 PINNED_MESSAGE_GUIDE_URL = "https://raw.githubusercontent.com/CeciliaLeander/alien-pistachio-bot/main/pinned-message-guide.png"
 
 # 规则消息跳转链接
-RULES_LINK = "https://discord.com/channels/1446888252194816132/1447518124696928357/1474661532779544636"
+RULES_LINK = "https://discord.com/channels/1446888252194816132/1447254631544520725/1472135687598903366"
+
+Announcement_link = "https://discord.com/channels/1446888252194816132/1475021085484515381"
 
 # 数据存储路径
 DATA_DIR = "/data"
@@ -596,8 +598,8 @@ async def on_member_join(member):
         f"👂 哇！{member.name} 来啦来啦！\n"
         "小鹅子在这里！鹅是一只外星企鹅留在开心果雪山的进食器官～虽然没有眼睛也没有大脑，但是会努力当好管家的！\n\n"
         "**新朋友看这里呀：**\n"
-        f"1. 雪山的规矩和板块介绍在这里哦：{RULES_LINK} ，社区公告在这里哦，有趣的社区事情在这里播报：\n"
-        "2. 看完能接受的话，若您不是lc或wbz成员，可以去新人提问区@【发卡组】或名称含有「新人bot」相关的老师礼貌申请卡区身份组：可颂🥐\n"
+        f"1. 【务必观看】雪山的社区规范在这里哦：{RULES_LINK} 。社区公告在这里哦：社区内重要和有趣的社区事情在这里播报：{Announcement_link}\n"
+        "2. 看完能接受的话并且!!不是!!lc或wbz的成员，可以去新人提问区@【发卡组】或名称含有「新人bot」相关的老师礼貌申请卡区身份组：可颂🥐。在另外两个社区的宝宝直接去那两个社区拿卡即可。\n"
         "3. 记得善用频道标注功能哦，有标注的都是重要消息！\n"
         f"4. 有问题来这里问就好啦：{NEWBIE_QA_LINK}\n\n"
         "希望你在雪山玩得开心呀！鹅会乖乖看好仓库的～🐾"
